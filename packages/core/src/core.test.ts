@@ -13,6 +13,7 @@ import {
   resolveLocalPaths,
   SessionStore,
   SkillRegistry,
+  TradingPiAgent,
   TradingPiDatabase,
   WorkflowEngine,
   type TradingPiEnv,
@@ -207,6 +208,26 @@ describe("Trading Pi local core", () => {
       expect(rt.repos.list("marketplace_items").length).toBeGreaterThanOrEqual(4);
       expect(rt.repos.list("mcp_servers").length).toBeGreaterThanOrEqual(1);
       expect(rt.repos.list("audit_records").length).toBeGreaterThanOrEqual(1);
+    } finally {
+      rt.database.close();
+      rmSync(rt.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("routes slash commands through TradingPiAgent into workflows", async () => {
+    const rt = testRuntime();
+    try {
+      const agent = new TradingPiAgent({ ...rt });
+      const result = await agent.prompt({ message: "/bootstrap-os", sessionId: "agent-route-session" }) as {
+        sessionId: string;
+        text: string;
+        workflowResult?: { runId: string; output: unknown };
+      };
+      expect(result.sessionId).toMatch(/^ses_/);
+      expect(result.workflowResult?.runId).toMatch(/^wfr_/);
+      expect(result.text).toContain("Trading Pi OS bootstrap completed");
+      expect(rt.repos.list("timeline_events").some((event) => String(event.type) === "agent.intent")).toBe(true);
+      expect(rt.repos.list("artifacts").some((artifact) => String(artifact.type) === "os-bootstrap")).toBe(true);
     } finally {
       rt.database.close();
       rmSync(rt.dir, { recursive: true, force: true });

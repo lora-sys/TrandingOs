@@ -22,7 +22,7 @@ export const tradingPiApi = {
   messages: (sessionId?: string) =>
     api<SessionMessages>(sessionId ? `/api/messages?sessionId=${encodeURIComponent(sessionId)}` : "/api/messages"),
   sendMessage: (message: string, sessionId?: string) =>
-    api<{ sessionId: string; text: string; messages: ChatMessage[] }>("/api/session/message", {
+    api<{ sessionId: string; text: string; messages: ChatMessage[]; workflowResult?: WorkflowResult }>("/api/session/message", {
       method: "POST",
       body: JSON.stringify({ message, sessionId }),
     }),

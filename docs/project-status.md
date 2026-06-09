@@ -14,7 +14,7 @@ Last updated: 2026-06-09
 
 | Area | Status | Evidence |
 |---|---|---|
-| Single Agent | Implemented | `packages/core/src/agent/trading-pi-agent.ts` wraps Pi `Agent` and attaches Skill Registry tools. |
+| Single Agent | Implemented | `packages/core/src/agent/trading-pi-agent.ts` wraps Pi `Agent`, attaches Skill Registry tools, and routes slash commands into workflows. |
 | Pi mono/core reuse | Implemented | `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` are used; reuse decision is documented in `docs/pi-reuse.md`. |
 | Tool use | Implemented | Skills are converted to Pi tools through `SkillRegistry.toPiTools()`. |
 | Workflow engine | Implemented | Workflow runs, timeline events, success/failure states are persisted. |
@@ -28,13 +28,13 @@ Last updated: 2026-06-09
 | Journal/Review | Implemented for paper data | Journal entries, review metrics, artifacts, and UI pages exist. |
 | Strategy/Backtest | Foundation implemented | Strategy creation and mock backtest bridge exist; production backtest engine and Evolution linkage are next. |
 | Marketplace | Local catalog implemented | Local Skills/Workflow/MCP/Template catalog and UI shell exist; install/update/remove flows are pending. |
-| Frontend design | In progress | Dark trading cockpit, nav, inspector, chat, artifact preview, workspace and marketplace pages exist. Phase 7 continues HeroUI chat/runtime hardening. |
+| Frontend design | In progress | Dark trading cockpit, nav, inspector, chat, artifact preview, workspace and marketplace pages exist. Chat now submits to the backend Agent path. |
 
 ## Gap Analysis
 
 | Requirement | Completion | Gap |
 |---|---|---|
-| Chat UI should use HeroUI chat-style components | In progress | Core feed, cards, chips, and composer now use HeroUI; slash suggestions and approval actions need richer interactive states. |
+| Chat UI should use HeroUI chat-style components | In progress | Core feed, cards, chips, and composer now use HeroUI. Slash execution has moved to backend Agent routing; approval actions need richer interactive states. |
 | Full MCP Hub | Partial | Registry and health exist; discovery, permissions UI, lifecycle, install/update/remove, and marketplace activation are pending. |
 | Browser Layer through AIO Sandbox | Partial | Package and skills exist; configured sandbox E2E, screenshot/PDF artifact persistence, and browser extraction workflows are pending. |
 | Search Hub for all Research workflows | Partial | Research includes Search Hub context; full Research Hub orchestration across search/news/browser/onchain/documents is pending. |
@@ -51,8 +51,8 @@ Last updated: 2026-06-09
 
 Next development should harden the OS shell instead of adding unrelated features:
 
-1. Make Chat Workspace the primary executable cockpit with HeroUI cards, clear skill blocks, approval cards, and artifact preview selection.
-2. Turn foundations into operating domains: MCP, Memory, Workspace, Search/Research, Browser, Strategy, and Marketplace should have observable APIs and UI states.
-3. Add policy/config files before live trading: permissions, risk limits, sandbox rules, cache TTLs, and trading modes.
-4. Expand tests from package-level unit tests to browser E2E scripts with screenshots/video for each phase.
+1. Finish Phase 8 validation so Chat Workspace is a true Agent entry point.
+2. Implement real MCP Hub next: discovery, permissions, lifecycle, marketplace activation, and approval gates.
+3. Implement real AIO Browser Layer: sessions, screenshot/PDF artifacts, extraction workflows, and sandbox preview.
+4. Upgrade Memory/Workspace so conversation, trade, review, and skill memory bind to workspace context.
 5. Keep real trading guarded and disabled until approval, permission, and exchange compliance layers are explicit.

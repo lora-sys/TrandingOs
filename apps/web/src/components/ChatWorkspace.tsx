@@ -49,13 +49,31 @@ export function ChatWorkspace() {
   };
 
   const mutation = useMutation({
-    mutationFn: async (prompt: string) => runPrompt(prompt, sessionId),
+    mutationFn: async (prompt: string) => tradingPiApi.sendMessage(prompt, sessionId),
     onSuccess: async (result) => {
       if (result.sessionId) setSessionId(result.sessionId);
-      setLocalItems((items) => [
-        ...items,
-        { id: `wf_${Date.now()}`, kind: "workflow", title: result.title, result: result.workflowResult },
-      ]);
+      if (result.workflowResult) {
+        setLocalItems((items) => [
+          ...items,
+          { id: `wf_${Date.now()}`, kind: "workflow", title: "Trading Pi Agent workflow completed", result: result.workflowResult! },
+        ]);
+      } else {
+        setLocalItems((items) => [
+          ...items,
+          {
+            id: `assistant_${Date.now()}`,
+            kind: "message",
+            message: {
+              id: `local_assistant_${Date.now()}`,
+              role: "assistant",
+              kind: "message",
+              content: result.text,
+              timestamp: new Date().toISOString(),
+              raw: result,
+            },
+          },
+        ]);
+      }
       await refresh();
     },
     onError: (error) => {
@@ -202,33 +220,6 @@ function FeedCard({ item }: { item: FeedItem }) {
       </Card.Content>
     </Card>
   );
-}
-
-async function runPrompt(prompt: string, sessionId?: string) {
-  const research = prompt.match(/^\/research\s+(.+)$/i);
-  if (research) {
-    const result = await tradingPiApi.runWorkflow("research.asset", { symbol: research[1]?.trim() ?? "ETH" }, sessionId);
-    return { sessionId: result.sessionId, title: "Research workflow completed", workflowResult: result };
-  }
-  const plan = prompt.match(/^\/plan\s+(\S+)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\S+))?/i);
-  if (plan) {
-    const result = await tradingPiApi.runWorkflow(
-      "trade.plan",
-      { symbol: plan[1] ?? "ETH/USDT", budgetUsd: Number(plan[2] ?? 100), direction: plan[3] ?? "spot" },
-      sessionId,
-    );
-    return { sessionId: result.sessionId, title: "Trade plan workflow completed", workflowResult: result };
-  }
-  if (/^\/review-day/i.test(prompt)) {
-    const result = await tradingPiApi.runWorkflow("review.daily", { period: "daily" }, sessionId);
-    return { sessionId: result.sessionId, title: "Daily review completed", workflowResult: result };
-  }
-  const result = await tradingPiApi.sendMessage(prompt, sessionId);
-  return {
-    sessionId: result.sessionId,
-    title: "Agent response completed",
-    workflowResult: { sessionId: result.sessionId, runId: "agent.prompt", output: { text: result.text } },
-  };
 }
 
 function artifactSummary(output: unknown) {
