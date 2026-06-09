@@ -11,4 +11,4 @@
 - [x] API smoke validates health/status/memory/MCP/browser/artifacts.
 - [x] Browser E2E screenshots saved.
 - [x] Browser E2E video saved.
-- [ ] Branch pushed and PR updated.
+- [x] Branch pushed and PR updated.
