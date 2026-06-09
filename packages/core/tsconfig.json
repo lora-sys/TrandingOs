@@ -6,6 +6,11 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../browser-layer" },
+    { "path": "../journal" },
+    { "path": "../search-hub" },
+    { "path": "../strategy-engine" }
+  ]
 }
-

@@ -49,7 +49,14 @@ export class Repositories {
       | "trades"
       | "positions"
       | "journal_entries"
-      | "reviews",
+      | "reviews"
+      | "audit_records"
+      | "data_cache"
+      | "mcp_servers"
+      | "marketplace_items"
+      | "workspaces"
+      | "strategies"
+      | "backtests",
   ) {
     const order = table === "skills" || table === "workflows" ? "id ASC" : table === "positions" ? "updated_at DESC" : "created_at DESC";
     return this.db.prepare(`SELECT * FROM ${table} ORDER BY ${order} LIMIT 100`).all();
@@ -122,12 +129,17 @@ export class Repositories {
     title: string;
     summary: string;
     path: string;
+    contentType?: string;
+    content?: string;
+    previewReady?: boolean;
+    previewPayload?: unknown;
     payload: unknown;
   }) {
     const artifactId = id("art");
     this.db.prepare(`
-      INSERT INTO artifacts (id, session_id, workflow_run_id, type, title, summary, path, payload_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO artifacts
+      (id, session_id, workflow_run_id, type, title, summary, path, content_type, content, preview_ready, preview_payload_json, payload_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       artifactId,
       artifact.sessionId ?? null,
@@ -136,6 +148,10 @@ export class Repositories {
       artifact.title,
       artifact.summary,
       artifact.path,
+      artifact.contentType ?? "text/markdown",
+      artifact.content ?? null,
+      artifact.previewReady ? 1 : 0,
+      JSON.stringify(artifact.previewPayload ?? null),
       JSON.stringify(artifact.payload),
       nowIso(),
     );
@@ -187,6 +203,10 @@ export class Repositories {
           title: string;
           summary: string;
           path: string;
+          content_type: string;
+          content: string | null;
+          preview_ready: number;
+          preview_payload_json: string | null;
           payload_json: string;
           created_at: string;
         }
@@ -254,6 +274,113 @@ export class Repositories {
       payload: { orderId, tradeId, mode: "paper", quantity: input.quantity, price: input.price },
     });
     return { orderId, tradeId, mode: "paper", status: "filled" };
+  }
+
+  createAuditRecord(input: { category: string; action: string; status: string; actor?: string; payload?: unknown }) {
+    const auditId = id("aud");
+    this.db.prepare(`
+      INSERT INTO audit_records (id, category, action, status, actor, payload_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(auditId, input.category, input.action, input.status, input.actor ?? "system", JSON.stringify(input.payload ?? {}), nowIso());
+    return auditId;
+  }
+
+  setCache(input: { namespace: string; key: string; value: unknown; source: string; ttlMs?: number }) {
+    const createdAt = nowIso();
+    const expiresAt = input.ttlMs ? new Date(Date.now() + input.ttlMs).toISOString() : null;
+    this.db.prepare(`
+      INSERT INTO data_cache (key, namespace, value_json, source, expires_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, source=excluded.source, expires_at=excluded.expires_at, created_at=excluded.created_at
+    `).run(input.key, input.namespace, JSON.stringify(input.value), input.source, expiresAt, createdAt);
+  }
+
+  getCache(key: string) {
+    const row = this.db.prepare("SELECT * FROM data_cache WHERE key = ?").get(key) as
+      | { value_json: string; expires_at: string | null; source: string }
+      | undefined;
+    if (!row) return undefined;
+    if (row.expires_at && Date.parse(row.expires_at) < Date.now()) return undefined;
+    return { value: JSON.parse(row.value_json), source: row.source };
+  }
+
+  upsertMcpServer(input: { id?: string; name: string; command?: string; url?: string; status?: string; permission?: string; health?: unknown }) {
+    const timestamp = nowIso();
+    const serverId = input.id ?? id("mcp");
+    this.db.prepare(`
+      INSERT INTO mcp_servers (id, name, command, url, status, permission, health_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name=excluded.name, command=excluded.command, url=excluded.url, status=excluded.status,
+        permission=excluded.permission, health_json=excluded.health_json, updated_at=excluded.updated_at
+    `).run(
+      serverId,
+      input.name,
+      input.command ?? null,
+      input.url ?? null,
+      input.status ?? "registered",
+      input.permission ?? "read",
+      JSON.stringify(input.health ?? {}),
+      timestamp,
+      timestamp,
+    );
+    return serverId;
+  }
+
+  upsertMarketplaceItem(input: { id?: string; kind: string; name: string; description: string; status?: string; permission?: string; manifest?: unknown }) {
+    const timestamp = nowIso();
+    const itemId = input.id ?? id("market");
+    this.db.prepare(`
+      INSERT INTO marketplace_items (id, kind, name, description, status, permission, manifest_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        kind=excluded.kind, name=excluded.name, description=excluded.description, status=excluded.status,
+        permission=excluded.permission, manifest_json=excluded.manifest_json, updated_at=excluded.updated_at
+    `).run(
+      itemId,
+      input.kind,
+      input.name,
+      input.description,
+      input.status ?? "available",
+      input.permission ?? "read",
+      JSON.stringify(input.manifest ?? {}),
+      timestamp,
+      timestamp,
+    );
+    return itemId;
+  }
+
+  upsertWorkspace(input: { id?: string; name: string; kind: string; context?: unknown }) {
+    const timestamp = nowIso();
+    const workspaceId = input.id ?? id("wrk");
+    this.db.prepare(`
+      INSERT INTO workspaces (id, name, kind, context_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name=excluded.name, kind=excluded.kind, context_json=excluded.context_json, updated_at=excluded.updated_at
+    `).run(workspaceId, input.name, input.kind, JSON.stringify(input.context ?? {}), timestamp, timestamp);
+    return workspaceId;
+  }
+
+  upsertStrategy(input: { id?: string; name: string; version?: string; status?: string; parameters?: unknown; score?: number }) {
+    const timestamp = nowIso();
+    const strategyId = input.id ?? id("str");
+    this.db.prepare(`
+      INSERT INTO strategies (id, name, version, status, parameters_json, score, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name=excluded.name, version=excluded.version, status=excluded.status,
+        parameters_json=excluded.parameters_json, score=excluded.score, updated_at=excluded.updated_at
+    `).run(strategyId, input.name, input.version ?? "1.0.0", input.status ?? "draft", JSON.stringify(input.parameters ?? {}), input.score ?? 0, timestamp, timestamp);
+    return strategyId;
+  }
+
+  createBacktest(input: { strategyId?: string; status: string; metrics?: unknown; artifactId?: string }) {
+    const backtestId = id("bkt");
+    this.db.prepare(`
+      INSERT INTO backtests (id, strategy_id, status, metrics_json, artifact_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(backtestId, input.strategyId ?? null, input.status, JSON.stringify(input.metrics ?? {}), input.artifactId ?? null, nowIso());
+    return backtestId;
   }
 
   createJournalEntry(input: {

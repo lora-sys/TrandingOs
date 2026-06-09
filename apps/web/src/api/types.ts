@@ -1,5 +1,9 @@
 export type Status = {
-  env: { openai: { configured: boolean; model: string; baseUrl: string | null }; local: { dataDir: string; defaultExchange: string } };
+  env: {
+    openai: { configured: boolean; model: string; baseUrl: string | null };
+    integrations?: Record<string, boolean>;
+    local: { dataDir: string; defaultExchange: string; exchangeFallbacks?: string[]; tradingMode?: string };
+  };
   paths: Record<string, string>;
   langfuseConfigured: boolean;
   skills: number;
@@ -24,6 +28,10 @@ export type Artifact = {
   path: string;
   created_at: string;
   markdown?: string;
+  content?: string;
+  contentType?: string;
+  previewReady?: boolean;
+  previewPayload?: unknown;
 };
 
 export type Approval = {
@@ -61,4 +69,4 @@ export type Portfolio = {
   trades: Row[];
 };
 
-export type Row = Record<string, string | number | null | undefined>;
+export type Row = Record<string, string | number | boolean | null | undefined | string[]>;

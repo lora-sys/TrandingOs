@@ -15,6 +15,7 @@ export const tradingPiApi = {
   timeline: () => api<TimelineEvent[]>("/api/timeline"),
   artifacts: () => api<Artifact[]>("/api/artifacts"),
   artifact: (id: string) => api<Artifact>(`/api/artifacts/${encodeURIComponent(id)}`),
+  artifactPreview: (id: string) => api<{ output: Artifact }>(`/api/artifacts/${encodeURIComponent(id)}/preview`),
   approvals: () => api<Approval[]>("/api/approvals"),
   skills: () => api<Row[]>("/api/skills"),
   workflows: () => api<Row[]>("/api/workflows"),
@@ -44,4 +45,20 @@ export const tradingPiApi = {
       body: JSON.stringify({ input, sessionId }),
     }),
   reviews: () => api<Row[]>("/api/reviews"),
+  workspaces: () => api<Row[]>("/api/workspaces"),
+  createWorkspace: (input: unknown, sessionId?: string) =>
+    api<{ sessionId: string; output: unknown }>("/api/workspaces", {
+      method: "POST",
+      body: JSON.stringify({ input, sessionId }),
+    }),
+  marketplace: () => api<Row[]>("/api/marketplace"),
+  seedMarketplace: (sessionId?: string) =>
+    api<{ sessionId: string; output: unknown }>("/api/marketplace/seed", {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+    }),
+  mcpServers: () => api<Row[]>("/api/mcp/servers"),
+  browserHealth: () => api<Row>("/api/browser/health"),
+  strategies: () => api<Row[]>("/api/strategies"),
+  backtests: () => api<Row[]>("/api/backtests"),
 };

@@ -5,6 +5,11 @@ export interface TradingPiEnv {
   openaiApiKey?: string;
   openaiBaseUrl?: string;
   openaiModel: string;
+  exaApiKey?: string;
+  tavilyApiKey?: string;
+  jinaApiKey?: string;
+  coinMarketCapApiKey?: string;
+  aioSandboxBaseUrl?: string;
   langfusePublicKey?: string;
   langfuseSecretKey?: string;
   langfuseHost?: string;
@@ -12,6 +17,8 @@ export interface TradingPiEnv {
   apiPort: number;
   webPort: number;
   defaultExchange: string;
+  exchangeFallbacks: string[];
+  tradingMode: "mock" | "paper" | "live_guarded";
 }
 
 function loadDotEnv(cwd = process.cwd()): Record<string, string> {
@@ -38,6 +45,11 @@ export function loadEnv(cwd = process.env.INIT_CWD ?? process.cwd()): TradingPiE
     openaiApiKey: value("OPENAI_API_KEY"),
     openaiBaseUrl: value("OPENAI_BASE_URL"),
     openaiModel: value("OPENAI_MODEL") ?? "gpt-4o-mini",
+    exaApiKey: value("EXA_API_KEY"),
+    tavilyApiKey: value("TAVILY_API_KEY"),
+    jinaApiKey: value("JINA_API_KEY"),
+    coinMarketCapApiKey: value("COINMARKETCAP_API_KEY"),
+    aioSandboxBaseUrl: value("AIO_SANDBOX_BASE_URL"),
     langfusePublicKey: value("LANGFUSE_PUBLIC_KEY"),
     langfuseSecretKey: value("LANGFUSE_SECRET_KEY"),
     langfuseHost: value("LANGFUSE_HOST"),
@@ -45,6 +57,11 @@ export function loadEnv(cwd = process.env.INIT_CWD ?? process.cwd()): TradingPiE
     apiPort: Number(value("TRADING_PI_API_PORT") ?? 8787),
     webPort: Number(value("TRADING_PI_WEB_PORT") ?? 5173),
     defaultExchange: value("TRADING_PI_DEFAULT_EXCHANGE") ?? "binance",
+    exchangeFallbacks: (value("TRADING_PI_EXCHANGE_FALLBACKS") ?? "okx,bybit,coinbase,kraken")
+      .split(",")
+      .map((exchange) => exchange.trim())
+      .filter(Boolean),
+    tradingMode: parseTradingMode(value("TRADING_PI_TRADING_MODE")),
   };
 }
 
@@ -59,11 +76,25 @@ export function redactedEnv(env: TradingPiEnv) {
       configured: Boolean(env.langfusePublicKey && env.langfuseSecretKey && env.langfuseHost),
       host: env.langfuseHost ?? null,
     },
+    integrations: {
+      exaConfigured: Boolean(env.exaApiKey),
+      tavilyConfigured: Boolean(env.tavilyApiKey),
+      jinaConfigured: Boolean(env.jinaApiKey),
+      coinMarketCapConfigured: Boolean(env.coinMarketCapApiKey),
+      aioSandboxConfigured: Boolean(env.aioSandboxBaseUrl),
+    },
     local: {
       dataDir: env.dataDir,
       apiPort: env.apiPort,
       webPort: env.webPort,
       defaultExchange: env.defaultExchange,
+      exchangeFallbacks: env.exchangeFallbacks,
+      tradingMode: env.tradingMode,
     },
   };
+}
+
+function parseTradingMode(value?: string): TradingPiEnv["tradingMode"] {
+  if (value === "mock" || value === "paper" || value === "live_guarded") return value;
+  return "paper";
 }

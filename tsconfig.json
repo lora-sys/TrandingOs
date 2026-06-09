@@ -1,9 +1,13 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/browser-layer" },
     { "path": "./packages/core" },
+    { "path": "./packages/journal" },
+    { "path": "./packages/memory-engine" },
+    { "path": "./packages/search-hub" },
+    { "path": "./packages/strategy-engine" },
     { "path": "./apps/api" },
     { "path": "./apps/web" }
   ]
 }
-

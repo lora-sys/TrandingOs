@@ -18,6 +18,9 @@ export class ArtifactEngine {
     title: string;
     summary: string;
     markdown: string;
+    contentType?: string;
+    previewReady?: boolean;
+    previewPayload?: unknown;
     sessionId?: string;
     workflowRunId?: string;
     payload?: unknown;
@@ -33,6 +36,10 @@ export class ArtifactEngine {
       title: input.title,
       summary: input.summary,
       path,
+      contentType: input.contentType ?? "text/markdown",
+      content: input.markdown,
+      previewReady: input.previewReady ?? true,
+      previewPayload: input.previewPayload ?? { kind: "markdown", path },
       payload: input.payload ?? {},
     });
     this.repos.createTimeline({
@@ -47,4 +54,3 @@ export class ArtifactEngine {
     return { id: artifactId, path };
   }
 }
-

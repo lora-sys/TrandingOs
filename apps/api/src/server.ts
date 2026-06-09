@@ -64,8 +64,18 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       return sendJson(res, {
         ...artifact,
         payload: JSON.parse(artifact.payload_json),
+        content: artifact.content ?? readFileSync(artifact.path, "utf8"),
+        contentType: artifact.content_type,
+        previewReady: Boolean(artifact.preview_ready),
+        previewPayload: artifact.preview_payload_json ? JSON.parse(artifact.preview_payload_json) : null,
         markdown: readFileSync(artifact.path, "utf8"),
       });
+    }
+    const artifactPreviewMatch = url.pathname.match(/^\/api\/artifacts\/([^/]+)\/preview$/);
+    if (artifactPreviewMatch && req.method === "GET") {
+      const artifactId = decodeURIComponent(artifactPreviewMatch[1] ?? "");
+      const result = await runApiSkill("artifact.preview", { artifactId }, runtime.sessions.ensureSession().id);
+      return sendJson(res, result);
     }
     if (url.pathname === "/api/approvals") return sendJson(res, runtime.repos.list("approvals"));
     if (url.pathname === "/api/sessions") return sendJson(res, runtime.repos.list("sessions"));
@@ -111,6 +121,40 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }
     if (url.pathname === "/api/reviews" && req.method === "GET") {
       return sendJson(res, runtime.repos.list("reviews"));
+    }
+    if (url.pathname === "/api/workspaces" && req.method === "GET") return sendJson(res, runtime.repos.list("workspaces"));
+    if (url.pathname === "/api/workspaces" && req.method === "POST") {
+      const body = await readBody(req);
+      const session = runtime.sessions.ensureSession(body.sessionId);
+      return sendJson(res, { sessionId: session.id, ...(await runApiSkill("workspace.create", body.input ?? body, session.id)) });
+    }
+    if (url.pathname === "/api/mcp/servers" && req.method === "GET") return sendJson(res, runtime.repos.list("mcp_servers"));
+    if (url.pathname === "/api/mcp/health" && req.method === "POST") {
+      const body = await readBody(req);
+      const session = runtime.sessions.ensureSession(body.sessionId);
+      return sendJson(res, { sessionId: session.id, ...(await runApiSkill("mcp.health", body.input ?? body, session.id)) });
+    }
+    if (url.pathname === "/api/marketplace" && req.method === "GET") return sendJson(res, runtime.repos.list("marketplace_items"));
+    if (url.pathname === "/api/marketplace/seed" && req.method === "POST") {
+      const body = await readBody(req);
+      const session = runtime.sessions.ensureSession(body.sessionId);
+      return sendJson(res, { sessionId: session.id, ...(await runApiSkill("marketplace.catalog.seed", body.input ?? {}, session.id)) });
+    }
+    if (url.pathname === "/api/strategies" && req.method === "GET") return sendJson(res, runtime.repos.list("strategies"));
+    if (url.pathname === "/api/backtests" && req.method === "GET") return sendJson(res, runtime.repos.list("backtests"));
+    if (url.pathname === "/api/audit" && req.method === "GET") return sendJson(res, runtime.repos.list("audit_records"));
+    if (url.pathname === "/api/cache" && req.method === "GET") return sendJson(res, runtime.repos.list("data_cache"));
+    if (url.pathname === "/api/search/query" && req.method === "POST") {
+      const body = await readBody(req);
+      const session = runtime.sessions.ensureSession(body.sessionId);
+      return sendJson(res, { sessionId: session.id, ...(await runApiSkill("search.query", body.input ?? body, session.id)) });
+    }
+    if (url.pathname === "/api/browser/health" && req.method === "GET") {
+      return sendJson(res, {
+        provider: "aio-sandbox",
+        configured: Boolean(runtime.env.aioSandboxBaseUrl),
+        baseUrl: runtime.env.aioSandboxBaseUrl ?? null,
+      });
     }
     const workflowMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/run$/);
     if (workflowMatch && req.method === "POST") {

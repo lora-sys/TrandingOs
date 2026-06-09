@@ -93,6 +93,10 @@ export class TradingPiDatabase {
         title TEXT NOT NULL,
         summary TEXT NOT NULL,
         path TEXT NOT NULL,
+        content_type TEXT NOT NULL DEFAULT 'text/markdown',
+        content TEXT,
+        preview_ready INTEGER NOT NULL DEFAULT 0,
+        preview_payload_json TEXT,
         payload_json TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
@@ -173,7 +177,90 @@ export class TradingPiDatabase {
         artifact_id TEXT,
         created_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS audit_records (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        action TEXT NOT NULL,
+        status TEXT NOT NULL,
+        actor TEXT NOT NULL DEFAULT 'system',
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS data_cache (
+        key TEXT PRIMARY KEY,
+        namespace TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        source TEXT NOT NULL,
+        expires_at TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_servers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        command TEXT,
+        url TEXT,
+        status TEXT NOT NULL,
+        permission TEXT NOT NULL,
+        health_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS marketplace_items (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL,
+        permission TEXT NOT NULL,
+        manifest_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        context_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS strategies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        status TEXT NOT NULL,
+        parameters_json TEXT NOT NULL,
+        score REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS backtests (
+        id TEXT PRIMARY KEY,
+        strategy_id TEXT,
+        status TEXT NOT NULL,
+        metrics_json TEXT NOT NULL,
+        artifact_id TEXT,
+        created_at TEXT NOT NULL
+      );
     `);
+    this.addColumnIfMissing("artifacts", "content_type", "TEXT NOT NULL DEFAULT 'text/markdown'");
+    this.addColumnIfMissing("artifacts", "content", "TEXT");
+    this.addColumnIfMissing("artifacts", "preview_ready", "INTEGER NOT NULL DEFAULT 0");
+    this.addColumnIfMissing("artifacts", "preview_payload_json", "TEXT");
+  }
+
+  private addColumnIfMissing(table: string, column: string, definition: string) {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((entry) => entry.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
+    }
   }
 
   close() {

@@ -1,3 +1,6 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
 body {
@@ -7,7 +10,7 @@ body {
   font-family: Inter, "Noto Sans SC", system-ui, sans-serif;
 }
 button, input, textarea, select { font: inherit; }
-button {
+button:not([data-slot]) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -19,9 +22,9 @@ button {
   background: #172033;
   cursor: pointer;
 }
-button:hover:not(:disabled) { border-color: #22d3ee; background: #1d2b42; }
-button:disabled { opacity: .55; cursor: not-allowed; }
-input, textarea, select {
+button:not([data-slot]):hover:not(:disabled) { border-color: #22d3ee; background: #1d2b42; }
+button:not([data-slot]):disabled { opacity: .55; cursor: not-allowed; }
+input:not([data-slot]), textarea:not([data-slot]), select:not([data-slot]) {
   width: 100%;
   border: 1px solid #28384d;
   border-radius: 8px;
@@ -29,8 +32,8 @@ input, textarea, select {
   background: #0b111d;
   outline: none;
 }
-input, select { min-height: 38px; padding: 0 11px; }
-textarea { min-height: 132px; padding: 10px 11px; resize: vertical; }
+input:not([data-slot]), select:not([data-slot]) { min-height: 38px; padding: 0 11px; }
+textarea:not([data-slot]) { min-height: 132px; padding: 10px 11px; resize: vertical; }
 label { display: grid; gap: 7px; color: #a9b8c9; font-size: 13px; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: 28px; letter-spacing: 0; }
@@ -57,6 +60,7 @@ p { line-height: 1.55; }
 .sideNav { border-right: 1px solid #1d2a3b; padding: 16px; }
 .inspectorRail { border-left: 1px solid #1d2a3b; padding: 14px; }
 .workspace { min-width: 0; padding: 16px; }
+.heroPanel { background: rgba(12, 19, 32, .86); border: 1px solid #1d2a3b; color: #e5edf6; }
 .brandMark { display: flex; align-items: center; gap: 11px; margin-bottom: 22px; }
 .brandMark span {
   width: 42px;
@@ -90,6 +94,7 @@ nav { display: grid; gap: 4px; }
 .statusLine strong { color: #c8facc; }
 
 .chatWorkspace, .pageStack { display: grid; gap: 14px; min-height: calc(100vh - 32px); }
+.chatWithPreview { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }
 .chatWorkspace { grid-template-rows: auto minmax(360px, 1fr) auto; }
 .chatHeader, .pageHeader {
   display: flex;
@@ -147,6 +152,11 @@ nav { display: grid; gap: 4px; }
 }
 .composer input { height: 44px; }
 .composer button { height: 44px; min-height: 44px; }
+.artifactPreview { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: hidden; }
+.previewMeta { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 0 12px 10px; }
+.previewScroll { max-height: 56vh; overflow: auto; padding: 10px 12px 12px; }
+.previewScroll pre { white-space: pre-wrap; margin: 0; color: #d7e2ed; font: 12px/1.55 "JetBrains Mono", ui-monospace, monospace; }
+.previewActions { display: flex; gap: 8px; padding: 0 12px 12px; }
 
 .inspectorPanel, .controlPanel, .tableSection {
   border: 1px solid #1d2a3b;
@@ -196,6 +206,8 @@ nav { display: grid; gap: 4px; }
 
 .pageStack { align-content: start; }
 .controlPanel { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)) auto; gap: 12px; align-items: end; }
+.workspaceForm { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)) auto auto; gap: 12px; width: 100%; align-items: end; }
+.marketHeroGrid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; padding: 0 13px 13px; align-items: stretch; }
 .plannerGrid { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
 .journalForm { grid-template-columns: repeat(4, minmax(140px, 1fr)); }
 .journalForm .wide { grid-column: 1 / -1; }
@@ -204,6 +216,7 @@ nav { display: grid; gap: 4px; }
 .tableSection { overflow: hidden; }
 .tableSection h2 { margin-bottom: 10px; }
 .tableWrap { overflow: auto; border: 1px solid #1d2a3b; border-radius: 8px; }
+.heroTable { min-width: 620px; }
 table { width: 100%; border-collapse: collapse; min-width: 620px; }
 th, td { padding: 10px 11px; border-bottom: 1px solid #1d2a3b; text-align: left; font-size: 13px; }
 th { color: #9fb1c5; background: #101827; text-transform: capitalize; }
@@ -213,6 +226,8 @@ td { color: #dce7f2; }
 @media (max-width: 1180px) {
   .appShell { grid-template-columns: 210px minmax(0, 1fr); }
   .inspectorRail { position: relative; height: auto; grid-column: 1 / -1; border-left: 0; border-top: 1px solid #1d2a3b; }
+  .chatWithPreview { grid-template-columns: 1fr; }
+  .artifactPreview { position: relative; top: 0; max-height: none; }
 }
 @media (max-width: 760px) {
   .appShell { grid-template-columns: 1fr; }
@@ -220,5 +235,5 @@ td { color: #dce7f2; }
   nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace { padding: 12px; }
   .chatHeader, .pageHeader { display: grid; }
-  .controlPanel, .plannerGrid, .journalForm { grid-template-columns: 1fr; }
+  .controlPanel, .plannerGrid, .journalForm, .workspaceForm, .marketHeroGrid { grid-template-columns: 1fr; }
 }

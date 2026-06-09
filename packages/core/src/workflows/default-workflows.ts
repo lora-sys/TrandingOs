@@ -212,6 +212,55 @@ Return sections: Scorecard, What Worked, Rule Breaks, Risk Notes, Tomorrow Focus
       return { reviewId, reviewContext, report, artifact };
     },
   });
+
+  engine.register({
+    id: "os.bootstrap",
+    name: "OS Bootstrap",
+    description: "Initialize local OS domains: MCP catalog, marketplace catalog, default workspaces, and audit trail.",
+    riskLevel: "low",
+    execute: async (_input: {}, context) => {
+      const mcp = await runSkill(context, "mcp.health", { name: "Local MCP Catalog" });
+      const marketplace = await runSkill(context, "marketplace.catalog.seed", {});
+      const workspaces = await Promise.all([
+        runSkill(context, "workspace.create", { id: "workspace_btc", name: "BTC Workspace", kind: "btc", context: { symbol: "BTC/USDT" } }),
+        runSkill(context, "workspace.create", { id: "workspace_eth", name: "ETH Workspace", kind: "eth", context: { symbol: "ETH/USDT" } }),
+        runSkill(context, "workspace.create", { id: "workspace_macro", name: "Macro Workspace", kind: "macro", context: { focus: "rates, dollar, liquidity" } }),
+      ]);
+      const artifact = await runSkill(context, "artifact.create", {
+        type: "os-bootstrap",
+        title: "Trading Pi OS Bootstrap",
+        summary: "Initialized MCP, marketplace, and workspace foundation domains.",
+        markdown: `# Trading Pi OS Bootstrap\n\n## MCP\n\n\`\`\`json\n${JSON.stringify(mcp, null, 2)}\n\`\`\`\n\n## Marketplace\n\n\`\`\`json\n${JSON.stringify(marketplace, null, 2)}\n\`\`\`\n\n## Workspaces\n\n\`\`\`json\n${JSON.stringify(workspaces, null, 2)}\n\`\`\`\n`,
+      });
+      return { mcp, marketplace, workspaces, artifact };
+    },
+  });
+
+  engine.register({
+    id: "strategy.backtest",
+    name: "Strategy Backtest Bridge",
+    description: "Create a strategy record, run sandbox backtest bridge, and generate a report artifact.",
+    riskLevel: "medium",
+    execute: async (input: { name: string; symbol: string; timeframe?: string; parameters?: unknown }, context) => {
+      const strategy = await runSkill<{ strategyId: string; score: number }>(context, "strategy.create", {
+        name: input.name,
+        parameters: input.parameters ?? {},
+        status: "testing",
+      });
+      const backtest = await runSkill(context, "backtest.run", {
+        strategyId: strategy.strategyId,
+        symbol: input.symbol,
+        timeframe: input.timeframe,
+      });
+      const artifact = await runSkill(context, "artifact.create", {
+        type: "backtest-report",
+        title: `Backtest Report ${input.name}`,
+        summary: `Sandbox backtest bridge report for ${input.name}.`,
+        markdown: `# Backtest Report ${input.name}\n\n\`\`\`json\n${JSON.stringify({ strategy, backtest }, null, 2)}\n\`\`\`\n`,
+      });
+      return { strategy, backtest, artifact };
+    },
+  });
 }
 
 function extractPrice(market: any): number | undefined {

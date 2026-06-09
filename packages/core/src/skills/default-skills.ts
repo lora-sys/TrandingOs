@@ -1,12 +1,25 @@
 import { readFileSync } from "node:fs";
 import { complete } from "@earendil-works/pi-ai";
+import { AioSandboxBrowserLayer } from "@trading-pi/browser-layer";
+import { normalizeJournalInput } from "@trading-pi/journal";
+import { SearchHub } from "@trading-pi/search-hub";
+import { scoreStrategy } from "@trading-pi/strategy-engine";
 import { Type } from "typebox";
 import { createTradingPiModel } from "../ai/model.js";
 import { fetchCcxtOhlcv, fetchCcxtTicker } from "../market/ccxt.js";
 import { fetchCoinGeckoQuote } from "../market/coingecko.js";
 import type { SkillRegistry } from "./registry.js";
+import type { SkillContext } from "./types.js";
 
 export function registerDefaultSkills(registry: SkillRegistry) {
+  const searchHub = (context: SkillContext) =>
+    new SearchHub({
+      exaApiKey: context.env.exaApiKey,
+      tavilyApiKey: context.env.tavilyApiKey,
+      jinaApiKey: context.env.jinaApiKey,
+    });
+  const browserLayer = (context: SkillContext) => new AioSandboxBrowserLayer({ aioSandboxBaseUrl: context.env.aioSandboxBaseUrl });
+
   registry.register({
     id: "ai.respond",
     name: "AI Response",
@@ -107,6 +120,93 @@ export function registerDefaultSkills(registry: SkillRegistry) {
   });
 
   registry.register({
+    id: "market.router.health",
+    name: "Exchange Router Health",
+    description: "Check configured CCXT fallback exchanges and record availability without aggregating.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      symbol: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const symbol = input.symbol ?? "ETH/USDT";
+      const exchanges = [context.env.defaultExchange, ...context.env.exchangeFallbacks];
+      const checks = [];
+      for (const exchange of [...new Set(exchanges)]) {
+        try {
+          const ticker = await fetchCcxtTicker(exchange, symbol);
+          checks.push({ exchange, status: "available", last: ticker.last ?? ticker.bid ?? null });
+        } catch (error) {
+          checks.push({ exchange, status: "unavailable", reason: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      return { symbol, checks, router: "fallback-only", observedAt: new Date().toISOString() };
+    },
+  });
+
+  registry.register({
+    id: "search.query",
+    name: "Search Query",
+    description: "Run a configured Search Hub query through Exa/Jina/Tavily/free provider selection.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      query: Type.String(),
+      limit: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, context) => {
+      const cacheKey = `search:${input.query}:${input.limit ?? 5}`;
+      const cached = context.repos.getCache(cacheKey);
+      if (cached) return { cached: true, ...cached.value as Record<string, unknown> };
+      const result = await searchHub(context).query({ query: input.query, limit: input.limit });
+      context.repos.setCache({ namespace: "search", key: cacheKey, value: result, source: "search-hub", ttlMs: 15 * 60_000 });
+      return { cached: false, ...result };
+    },
+  });
+
+  registry.register({
+    id: "search.extract",
+    name: "Search Extract",
+    description: "Extract web page content through Search Hub extraction providers.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({ url: Type.String() }),
+    execute: async (input, context) => searchHub(context).extract(input),
+  });
+
+  registry.register({
+    id: "search.summarize",
+    name: "Search Summarize",
+    description: "Summarize extracted content locally for Research Hub context.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({ content: Type.String(), maxChars: Type.Optional(Type.Number()) }),
+    execute: async (input, context) => searchHub(context).summarize(input),
+  });
+
+  for (const action of ["search", "open", "extract", "screenshot", "pdf"] as const) {
+    registry.register({
+      id: `browser.${action}`,
+      name: `Browser ${action}`,
+      description: `Run browser.${action} through the AIO Sandbox Browser Layer.`,
+      riskLevel: action === "open" ? "medium" : "low",
+      permission: "read",
+      parameters: Type.Object({
+        url: Type.Optional(Type.String()),
+        query: Type.Optional(Type.String()),
+      }),
+      execute: async (input, context) => {
+        const layer = browserLayer(context);
+        if (action === "search") return layer.search(input.query ?? "");
+        if (action === "open") return layer.open(input.url ?? "");
+        if (action === "extract") return layer.extract(input.url ?? "");
+        if (action === "screenshot") return layer.screenshot(input.url ?? "");
+        return layer.pdf(input.url ?? "");
+      },
+    });
+  }
+
+  registry.register({
     id: "risk.positionSizing",
     name: "Position Sizing",
     description: "Calculate simple position size from budget and stop distance.",
@@ -181,6 +281,7 @@ export function registerDefaultSkills(registry: SkillRegistry) {
       return {
         symbol: input.symbol,
         snapshot,
+        search: await registry.get("search.query").execute({ query: `${input.symbol} market news risk catalyst`, limit: 5 }, context),
         memory: context.memory.contextBlock("user"),
         requestedAt: new Date().toISOString(),
       };
@@ -246,7 +347,30 @@ Return sections: Market Snapshot, Source Quality, Thesis, Key Risks, Watchlist L
       return {
         ...artifact,
         payload: JSON.parse(artifact.payload_json),
+        previewPayload: artifact.preview_payload_json ? JSON.parse(artifact.preview_payload_json) : null,
         markdown: readFileSync(artifact.path, "utf8"),
+      };
+    },
+  });
+
+  registry.register({
+    id: "artifact.preview",
+    name: "Artifact Preview",
+    description: "Read artifact preview metadata and content for the frontend preview panel.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({ artifactId: Type.String() }),
+    execute: async (input, context) => {
+      const artifact = context.repos.getArtifact(input.artifactId);
+      if (!artifact) throw new Error(`Artifact not found: ${input.artifactId}`);
+      return {
+        id: artifact.id,
+        type: artifact.type,
+        title: artifact.title,
+        contentType: artifact.content_type,
+        content: artifact.content ?? readFileSync(artifact.path, "utf8"),
+        previewReady: Boolean(artifact.preview_ready),
+        previewPayload: artifact.preview_payload_json ? JSON.parse(artifact.preview_payload_json) : null,
       };
     },
   });
@@ -289,29 +413,139 @@ Return sections: Market Snapshot, Source Quality, Thesis, Key Risks, Watchlist L
       screenshotPath: Type.Optional(Type.String()),
     }),
     execute: async (input, context) => {
-      const journalId = context.repos.createJournalEntry({ ...input, sessionId: context.sessionId });
+      const normalized = normalizeJournalInput(input);
+      const journalId = context.repos.createJournalEntry({ ...normalized, sessionId: context.sessionId });
       const artifact = context.artifacts.create({
         type: "trade-journal",
         title: `Trade Journal ${journalId}`,
-        summary: input.notes.slice(0, 160),
+        summary: normalized.notes.slice(0, 160),
         markdown: `# Trade Journal ${journalId}
 
-- Trade: ${input.tradeId ?? "unlinked"}
-- Plan artifact: ${input.planArtifactId ?? "unlinked"}
-- Mood: ${input.mood ?? "not recorded"}
-- Discipline score: ${input.disciplineScore ?? 0}
-- Rules violated: ${(input.rulesViolated ?? []).join(", ") || "none"}
+- Trade: ${normalized.tradeId ?? "unlinked"}
+- Plan artifact: ${normalized.planArtifactId ?? "unlinked"}
+- Mood: ${normalized.mood ?? "not recorded"}
+- Discipline score: ${normalized.disciplineScore ?? 0}
+- Rules violated: ${normalized.rulesViolated.join(", ") || "none"}
 
 ## Notes
 
-${input.notes}
+${normalized.notes}
 `,
         sessionId: context.sessionId,
         workflowRunId: context.workflowRunId,
-        payload: input,
+        payload: normalized,
       });
       context.repos.attachJournalArtifact(journalId, artifact.id);
       return { journalId, artifact };
+    },
+  });
+
+  registry.register({
+    id: "workspace.create",
+    name: "Create Workspace",
+    description: "Create or update a Trading Pi workspace as context + memory + artifacts + workflows.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({
+      id: Type.Optional(Type.String()),
+      name: Type.String(),
+      kind: Type.Union([Type.Literal("btc"), Type.Literal("eth"), Type.Literal("macro"), Type.Literal("custom")]),
+      context: Type.Optional(Type.Any()),
+    }),
+    execute: async (input, context) => ({ workspaceId: context.repos.upsertWorkspace(input) }),
+  });
+
+  registry.register({
+    id: "mcp.health",
+    name: "MCP Health Check",
+    description: "Record MCP registry health as a Skill Registry extension layer.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      id: Type.Optional(Type.String()),
+      name: Type.Optional(Type.String()),
+      url: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const health = { status: input.url ? "configured" : "local-catalog", checkedAt: new Date().toISOString() };
+      const serverId = context.repos.upsertMcpServer({
+        id: input.id,
+        name: input.name ?? "Local MCP Catalog",
+        url: input.url,
+        status: health.status,
+        permission: "read",
+        health,
+      });
+      context.repos.createAuditRecord({ category: "mcp", action: "mcp.health", status: health.status, payload: { serverId, health } });
+      return { serverId, health };
+    },
+  });
+
+  registry.register({
+    id: "marketplace.catalog.seed",
+    name: "Seed Marketplace Catalog",
+    description: "Seed local Skills/Workflow/MCP/Template marketplace items without network installs.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({}),
+    execute: async (_input, context) => {
+      const items = [
+        ["skill", "Search Hub", "Unified Exa/Tavily/Jina/free search skills."],
+        ["workflow", "Research Hub", "Research workflow entry via Search/Browser/Market context."],
+        ["mcp", "Local MCP Catalog", "MCP registry, discovery, health, and permissions."],
+        ["template", "BTC Workspace", "Default BTC workspace template."],
+      ] as const;
+      return {
+        items: items.map(([kind, name, description]) =>
+          context.repos.upsertMarketplaceItem({ kind, name, description, status: "available", permission: "read" }),
+        ),
+      };
+    },
+  });
+
+  registry.register({
+    id: "strategy.create",
+    name: "Create Strategy",
+    description: "Create or update a strategy definition with lifecycle and score metadata.",
+    riskLevel: "medium",
+    permission: "write",
+    parameters: Type.Object({
+      name: Type.String(),
+      version: Type.Optional(Type.String()),
+      status: Type.Optional(Type.String()),
+      parameters: Type.Optional(Type.Any()),
+      winRate: Type.Optional(Type.Number()),
+      rewardRisk: Type.Optional(Type.Number()),
+      disciplineScore: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, context) => {
+      const score = scoreStrategy(input);
+      const strategyId = context.repos.upsertStrategy({
+        name: input.name,
+        version: input.version,
+        status: input.status,
+        parameters: input.parameters,
+        score,
+      });
+      return { strategyId, score };
+    },
+  });
+
+  registry.register({
+    id: "backtest.run",
+    name: "Run Backtest",
+    description: "Create a sandbox backtest record linking Strategy Engine and Evolution Engine.",
+    riskLevel: "medium",
+    permission: "write",
+    parameters: Type.Object({
+      strategyId: Type.Optional(Type.String()),
+      symbol: Type.String(),
+      timeframe: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const metrics = { symbol: input.symbol, timeframe: input.timeframe ?? "1h", mode: "sandbox", note: "Backtest bridge foundation record." };
+      const backtestId = context.repos.createBacktest({ strategyId: input.strategyId, status: "completed", metrics });
+      return { backtestId, metrics };
     },
   });
 
