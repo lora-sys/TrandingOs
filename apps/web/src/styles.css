@@ -105,53 +105,44 @@ nav { display: grid; gap: 4px; }
 }
 .chatHeader p, .pageHeader p { color: #8da1b6; margin-top: 6px; }
 .commandHints { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
-.commandHints span {
-  color: #bff8ff;
-  background: #0d1c27;
-  border: 1px solid #21485a;
-  border-radius: 8px;
-  padding: 7px 9px;
-  font: 12px "JetBrains Mono", ui-monospace, monospace;
-}
+.commandHints [data-slot] { font: 12px "JetBrains Mono", ui-monospace, monospace; }
 .messageViewport {
   position: relative;
   min-height: 420px;
   overflow: auto;
-  border: 1px solid #1d2a3b;
-  border-radius: 8px;
   background: rgba(9, 14, 23, .78);
 }
 .virtualRow { position: absolute; top: 0; left: 0; width: 100%; padding: 10px 12px; }
-.messageBubble, .artifactCard, .skillRunCard, .approvalCard {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 10px;
+.feedCard {
   max-width: 840px;
   border: 1px solid #26384e;
-  border-radius: 8px;
-  padding: 12px;
   background: #101827;
   box-shadow: 0 12px 30px rgba(0,0,0,.22);
+  color: #e5edf6;
 }
+.feedCardHeader { display: flex; align-items: center; gap: 9px; padding: 11px 12px 4px; }
+.feedCardHeader strong { overflow-wrap: anywhere; }
+.feedCardBody { padding: 4px 12px 12px; }
 .messageBubble.user { margin-left: auto; background: #142235; border-color: #315170; }
 .messageBubble.assistant { background: #0f1b22; border-color: #24424a; }
-.messageBubble small { display: block; margin-bottom: 4px; color: #8da1b6; text-transform: uppercase; font-size: 11px; }
 .messageBubble p, .artifactCard p, .skillRunCard p, .approvalCard p { color: #d7e2ed; overflow-wrap: anywhere; }
 .artifactCard { border-color: #305842; background: #0f1d18; }
-.artifactCard small { color: #86efac; }
 .skillRunCard { border-color: #3b5374; background: #111c2c; }
 .approvalCard { border-color: #7c4b23; background: #21170e; }
+.composerCard { padding: 9px; }
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 46px;
   gap: 8px;
-  padding: 9px;
-  border: 1px solid #1d2a3b;
-  border-radius: 8px;
-  background: #0c1320;
+  align-items: end;
 }
-.composer input { height: 44px; }
-.composer button { height: 44px; min-height: 44px; }
+.composer textarea {
+  min-height: 44px;
+  max-height: 132px;
+  resize: vertical;
+  padding-top: 11px;
+}
+.composer [data-slot="button"] { height: 44px; min-height: 44px; width: 44px; padding: 0; }
 .artifactPreview { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: hidden; }
 .previewMeta { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 0 12px 10px; }
 .previewScroll { max-height: 56vh; overflow: auto; padding: 10px 12px 12px; }

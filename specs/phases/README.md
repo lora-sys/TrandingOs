@@ -21,3 +21,4 @@ Trading Pi is a local-first personal trading operating system. It uses one core 
 4. [Phase 4 - Market Research Planner](phase-4-market-research-planner.md)
 5. [Phase 5 - Portfolio Journal Review](phase-5-portfolio-journal-review.md)
 6. [Phase 6 - OS Upgrade Foundation](phase-6-os-upgrade-foundation.md)
+7. [Phase 7 - Chat Runtime Hardening](phase-7-chat-runtime-hardening.md)

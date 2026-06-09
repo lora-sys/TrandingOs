@@ -1,3 +1,6 @@
+import { Button } from "@heroui/react/button";
+import { Card } from "@heroui/react/card";
+import { Chip } from "@heroui/react/chip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -85,13 +88,13 @@ export function ChatWorkspace() {
           <p>One core agent, Workflow + Skills, local artifacts, approval-first execution.</p>
         </div>
         <div className="commandHints">
-          <span>/research ETH</span>
-          <span>/plan ETH/USDT 100 spot</span>
-          <span>/review-day</span>
+          <Chip size="sm" variant="flat" color="primary">/research ETH</Chip>
+          <Chip size="sm" variant="flat" color="success">/plan ETH/USDT 100 spot</Chip>
+          <Chip size="sm" variant="flat" color="warning">/review-day</Chip>
         </div>
       </div>
 
-      <div className="messageViewport" ref={parentRef}>
+      <Card className="messageViewport heroPanel" ref={parentRef}>
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const item = feed[virtualRow.index];
@@ -108,29 +111,38 @@ export function ChatWorkspace() {
           })}
         </div>
         {!feed.length && <div className="emptyState"><Bot size={28} /> Start with a slash command or ask Trading Pi directly.</div>}
-      </div>
+      </Card>
 
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.handleSubmit();
-        }}
-      >
-        <form.Field name="prompt">
-          {(field) => (
-            <input
-              aria-label="Trading Pi composer"
-              value={field.state.value}
-              onChange={(event) => field.handleChange(event.target.value)}
-              placeholder="Ask Trading Pi or run /research, /plan, /review-day..."
-            />
-          )}
-        </form.Field>
-        <button disabled={mutation.isPending} title="Send">
-          <Send size={18} />
-        </button>
-      </form>
+      <Card className="composerCard heroPanel">
+        <form
+          className="composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <form.Field name="prompt">
+            {(field) => (
+              <textarea
+                aria-label="Trading Pi composer"
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void form.handleSubmit();
+                  }
+                }}
+                placeholder="Ask Trading Pi or run /research, /plan, /review-day..."
+                rows={1}
+              />
+            )}
+          </form.Field>
+          <Button type="submit" variant="primary" isDisabled={mutation.isPending} title="Send">
+            <Send size={18} />
+          </Button>
+        </form>
+      </Card>
     </section>
   );
 }
@@ -139,46 +151,56 @@ function FeedCard({ item }: { item: FeedItem }) {
   if (item.kind === "message") {
     const Icon = item.message.role === "user" ? User : Bot;
     return (
-      <article className={`messageBubble ${item.message.role}`}>
-        <Icon size={16} />
-        <div>
-          <small>{item.message.role}</small>
+      <Card className={`feedCard messageBubble ${item.message.role}`}>
+        <Card.Header className="feedCardHeader">
+          <Icon size={16} />
+          <Chip size="sm" variant="flat" color={item.message.role === "user" ? "primary" : "success"}>{item.message.role}</Chip>
+        </Card.Header>
+        <Card.Content className="feedCardBody">
           <p>{item.message.content || item.message.kind}</p>
-        </div>
-      </article>
+        </Card.Content>
+      </Card>
     );
   }
   if (item.kind === "artifact") {
     return (
-      <article className="artifactCard">
-        <FileText size={18} />
-        <div>
+      <Card className="feedCard artifactCard">
+        <Card.Header className="feedCardHeader">
+          <FileText size={18} />
           <strong>{item.artifact.title}</strong>
+          <Chip size="sm" variant="flat" color="success">{item.artifact.type}</Chip>
+        </Card.Header>
+        <Card.Content className="feedCardBody">
           <p>{item.artifact.summary}</p>
-          <small>{item.artifact.type}</small>
-        </div>
-      </article>
+        </Card.Content>
+      </Card>
     );
   }
   if (item.kind === "workflow") {
     return (
-      <article className="skillRunCard">
-        <Workflow size={18} />
-        <div>
+      <Card className="feedCard skillRunCard">
+        <Card.Header className="feedCardHeader">
+          <Workflow size={18} />
           <strong>{item.title}</strong>
+          <Chip size="sm" variant="flat" color="primary">workflow</Chip>
+        </Card.Header>
+        <Card.Content className="feedCardBody">
           <p>{artifactSummary(item.result.output)}</p>
-        </div>
-      </article>
+        </Card.Content>
+      </Card>
     );
   }
   return (
-    <article className="approvalCard">
-      <AlertTriangle size={18} />
-      <div>
+    <Card className="feedCard approvalCard">
+      <Card.Header className="feedCardHeader">
+        <AlertTriangle size={18} />
         <strong>{item.title}</strong>
+        <Chip size="sm" variant="flat" color="warning">approval</Chip>
+      </Card.Header>
+      <Card.Content className="feedCardBody">
         <p>{item.detail}</p>
-      </div>
-    </article>
+      </Card.Content>
+    </Card>
   );
 }
 
