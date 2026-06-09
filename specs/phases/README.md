@@ -18,4 +18,5 @@ Trading Pi is a local-first personal trading operating system. It uses one core 
 1. [Phase 1 - Local Foundation + Pi Reuse Validation](phase-1-local-foundation.md)
 2. [Phase 2 - TradingPiAgent + Session/Memory Runtime](phase-2-agent-session-memory.md)
 3. [Phase 3 - Workflow + Skill Execution + Market Data](phase-3-workflows-skills-market.md)
-
+4. [Phase 4 - Market Research Planner](phase-4-market-research-planner.md)
+5. [Phase 5 - Portfolio Journal Review](phase-5-portfolio-journal-review.md)
