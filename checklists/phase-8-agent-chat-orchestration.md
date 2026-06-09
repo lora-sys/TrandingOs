@@ -12,4 +12,4 @@
 - [x] API smoke validates `/api/session/message` workflow routing.
 - [x] Playwright E2E screenshot saved.
 - [x] Playwright E2E video saved.
-- [ ] Branch pushed and PR updated.
+- [x] Branch pushed and PR updated.
