@@ -9,6 +9,11 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@tanstack/react-form": "^1.33.0",
+    "@tanstack/react-query": "^5.101.0",
+    "@tanstack/react-router": "^1.170.15",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.2",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "0.468.0",
     "react": "18.3.1",
@@ -19,4 +24,3 @@
     "@types/react-dom": "18.3.5"
   }
 }
-

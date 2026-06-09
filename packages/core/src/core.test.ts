@@ -59,10 +59,23 @@ describe("Trading Pi local core", () => {
     const rt = testRuntime();
     try {
       expect(rt.skills.list().map((skill) => skill.id)).toEqual(
-        expect.arrayContaining(["market.coingecko.quote", "market.ccxt.ticker", "market.ccxt.ohlcv", "ai.respond"]),
+        expect.arrayContaining([
+          "market.coingecko.quote",
+          "market.ccxt.ticker",
+          "market.ccxt.ohlcv",
+          "market.snapshot",
+          "research.asset",
+          "research.report",
+          "risk.tradePlan",
+          "paper.order.create",
+          "journal.entry.create",
+          "review.daily",
+          "artifact.read",
+          "ai.respond",
+        ]),
       );
       expect(rt.workflows.list().map((workflow) => workflow.id)).toEqual(
-        expect.arrayContaining(["chat.respond", "market.snapshot", "trade.plan"]),
+        expect.arrayContaining(["chat.respond", "market.snapshot", "research.asset", "trade.plan", "review.daily"]),
       );
     } finally {
       rt.database.close();
@@ -123,6 +136,52 @@ describe("Trading Pi local core", () => {
       expect(result.runId).toMatch(/^wfr_/);
       expect(rt.repos.list("artifacts").length).toBeGreaterThanOrEqual(1);
       expect(rt.repos.list("timeline_events").length).toBeGreaterThanOrEqual(1);
+    } finally {
+      rt.database.close();
+      rmSync(rt.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists local paper orders, trades, positions, and journal entries", async () => {
+    const rt = testRuntime();
+    try {
+      const orderSkill = rt.skills.get("paper.order.create");
+      const journalSkill = rt.skills.get("journal.entry.create");
+      const order = await orderSkill.execute(
+        { symbol: "ETH/USDT", side: "buy", quantity: 0.25, price: 100 },
+        { ...rt, sessionId: "paper-session" },
+      ) as { orderId: string; tradeId: string };
+      expect(order.orderId).toMatch(/^ord_/);
+      expect(order.tradeId).toMatch(/^trd_/);
+      expect(rt.repos.portfolioSnapshot().positions).toHaveLength(1);
+      const journal = await journalSkill.execute(
+        { tradeId: order.tradeId, mood: "focused", disciplineScore: 90, rulesViolated: [], notes: "Followed plan." },
+        { ...rt, sessionId: "paper-session" },
+      ) as { journalId: string; artifact: { id: string } };
+      expect(journal.journalId).toMatch(/^jnl_/);
+      expect(journal.artifact.id).toMatch(/^art_/);
+      expect(rt.repos.list("journal_entries")).toHaveLength(1);
+    } finally {
+      rt.database.close();
+      rmSync(rt.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("calculates review metrics from local paper data without network calls", async () => {
+    const rt = testRuntime();
+    try {
+      rt.repos.createPaperOrder({ symbol: "BTC/USDT", side: "buy", quantity: 0.1, price: 100, sessionId: "review-session" });
+      rt.repos.createJournalEntry({
+        sessionId: "review-session",
+        disciplineScore: 70,
+        rulesViolated: ["late-entry"],
+        notes: "Entered after plan trigger.",
+      });
+      const reviewSkill = rt.skills.get("review.daily");
+      const review = await reviewSkill.execute({ period: "daily" }, { ...rt, sessionId: "review-session" }) as {
+        metrics: { trades: number; journalEntries: number; ruleBreaks: number; disciplineScore: number };
+      };
+      expect(review.metrics).toMatchObject({ trades: 1, journalEntries: 1, ruleBreaks: 1, disciplineScore: 70 });
     } finally {
       rt.database.close();
       rmSync(rt.dir, { recursive: true, force: true });

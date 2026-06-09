@@ -109,6 +109,70 @@ export class TradingPiDatabase {
         created_at TEXT NOT NULL,
         decided_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        order_type TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        price REAL NOT NULL,
+        status TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'paper',
+        source_plan_artifact_id TEXT,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        filled_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS trades (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        session_id TEXT,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        entry_price REAL NOT NULL,
+        exit_price REAL,
+        pnl REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL,
+        opened_at TEXT NOT NULL,
+        closed_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS positions (
+        symbol TEXT PRIMARY KEY,
+        quantity REAL NOT NULL,
+        avg_price REAL NOT NULL,
+        realized_pnl REAL NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS journal_entries (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        trade_id TEXT,
+        plan_artifact_id TEXT,
+        mood TEXT,
+        discipline_score INTEGER NOT NULL DEFAULT 0,
+        rules_violated_json TEXT NOT NULL,
+        notes TEXT NOT NULL,
+        screenshot_path TEXT,
+        artifact_id TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS reviews (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        period TEXT NOT NULL,
+        metrics_json TEXT NOT NULL,
+        discipline_score INTEGER NOT NULL DEFAULT 0,
+        summary TEXT NOT NULL,
+        artifact_id TEXT,
+        created_at TEXT NOT NULL
+      );
     `);
   }
 
@@ -116,4 +180,3 @@ export class TradingPiDatabase {
     this.db.close();
   }
 }
-
