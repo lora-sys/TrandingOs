@@ -1,0 +1,31 @@
+{
+  "name": "trading-pi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @trading-pi/api\" \"npm run dev -w @trading-pi/web\"",
+    "dev:api": "npm run dev -w @trading-pi/api",
+    "dev:web": "npm run dev -w @trading-pi/web",
+    "build": "npm run build -ws",
+    "check": "tsc -b",
+    "test": "vitest run",
+    "start": "npm run start -w @trading-pi/api",
+    "db:migrate": "npm run db:migrate -w @trading-pi/api"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.4",
+    "concurrently": "9.2.1",
+    "typescript": "5.9.3",
+    "vite": "7.2.7",
+    "vitest": "3.2.4"
+  }
+}
+

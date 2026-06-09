@@ -1,0 +1,119 @@
+import { DatabaseSync } from "node:sqlite";
+import { dirname } from "node:path";
+import { mkdirSync } from "node:fs";
+
+export class TradingPiDatabase {
+  readonly db: DatabaseSync;
+
+  constructor(readonly sqlitePath: string) {
+    mkdirSync(dirname(sqlitePath), { recursive: true });
+    this.db = new DatabaseSync(sqlitePath);
+    this.db.exec("PRAGMA journal_mode = WAL;");
+    this.db.exec("PRAGMA foreign_keys = ON;");
+  }
+
+  migrate() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active'
+      );
+
+      CREATE TABLE IF NOT EXISTS timeline_events (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        workflow_run_id TEXT,
+        skill_run_id TEXT,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        detail TEXT,
+        status TEXT NOT NULL,
+        payload_json TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS memory_records (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(scope, key)
+      );
+
+      CREATE TABLE IF NOT EXISTS workflows (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        risk_level TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS workflow_runs (
+        id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        session_id TEXT,
+        input_json TEXT NOT NULL,
+        output_json TEXT,
+        status TEXT NOT NULL,
+        error TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS skills (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        risk_level TEXT NOT NULL,
+        permission TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_runs (
+        id TEXT PRIMARY KEY,
+        workflow_run_id TEXT,
+        skill_id TEXT NOT NULL,
+        input_json TEXT NOT NULL,
+        output_json TEXT,
+        status TEXT NOT NULL,
+        error TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS artifacts (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        workflow_run_id TEXT,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        path TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS approvals (
+        id TEXT PRIMARY KEY,
+        session_id TEXT,
+        workflow_run_id TEXT,
+        action TEXT NOT NULL,
+        risk_level TEXT NOT NULL,
+        status TEXT NOT NULL,
+        input_json TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        decided_at TEXT
+      );
+    `);
+  }
+
+  close() {
+    this.db.close();
+  }
+}
+

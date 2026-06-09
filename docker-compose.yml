@@ -1,0 +1,18 @@
+services:
+  trading-pi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      TRADING_PI_DATA_DIR: /data
+      TRADING_PI_API_PORT: 8787
+    ports:
+      - "8787:8787"
+    volumes:
+      - trading-pi-data:/data
+
+volumes:
+  trading-pi-data:
+

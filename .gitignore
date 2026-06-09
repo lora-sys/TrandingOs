@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.trading-pi/
+node_modules/
+dist/
+dist-types/
+coverage/
+.vite/
+*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+output/playwright/
+.playwright-cli/
+npm-debug.log*

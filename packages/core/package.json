@@ -1,0 +1,19 @@
+{
+  "name": "@trading-pi/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.79.0",
+    "@earendil-works/pi-ai": "0.79.0",
+    "@earendil-works/pi-web-ui": "0.75.3",
+    "ccxt": "4.5.27",
+    "langfuse": "3.38.20",
+    "typebox": "1.1.38"
+  }
+}

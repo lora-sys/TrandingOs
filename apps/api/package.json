@@ -1,0 +1,18 @@
+{
+  "name": "@trading-pi/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "db:migrate": "tsx src/migrate.ts"
+  },
+  "dependencies": {
+    "@trading-pi/core": "0.1.0",
+    "tsx": "4.21.0"
+  }
+}
+
