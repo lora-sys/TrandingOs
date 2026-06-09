@@ -12,6 +12,13 @@
     "@earendil-works/pi-agent-core": "0.79.0",
     "@earendil-works/pi-ai": "0.79.0",
     "@earendil-works/pi-web-ui": "0.75.3",
+    "@trading-pi/browser-layer": "0.1.0",
+    "@trading-pi/journal": "0.1.0",
+    "@trading-pi/mcp-hub": "0.1.0",
+    "@trading-pi/memory-engine": "0.1.0",
+    "@trading-pi/research-hub": "0.1.0",
+    "@trading-pi/search-hub": "0.1.0",
+    "@trading-pi/strategy-engine": "0.1.0",
     "ccxt": "4.5.27",
     "langfuse": "3.38.20",
     "typebox": "1.1.38"

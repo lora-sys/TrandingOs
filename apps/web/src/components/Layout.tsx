@@ -1,5 +1,6 @@
+import { Chip } from "@heroui/react/chip";
 import { Link } from "@tanstack/react-router";
-import { Activity, BarChart3, BookOpen, Boxes, BrainCircuit, ClipboardList, Database, FileClock, LineChart, MessageSquare, NotebookPen, Shield } from "lucide-react";
+import { Activity, BarChart3, BookOpen, Boxes, BrainCircuit, ClipboardList, Database, FileClock, FolderKanban, GraduationCap, LineChart, MessageSquare, MonitorCog, NotebookPen, Settings, Shield } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { tradingPiApi } from "../api/client.js";
@@ -7,7 +8,8 @@ import { Inspector } from "./Inspector.js";
 import { SessionProvider } from "./session.js";
 
 const nav = [
-  { to: "/", label: "Chat", icon: MessageSquare },
+  { to: "/chat", label: "Chat", icon: MessageSquare },
+  { to: "/workspaces", label: "Workspaces", icon: FolderKanban },
   { to: "/market", label: "Market", icon: LineChart },
   { to: "/research", label: "Research", icon: BrainCircuit },
   { to: "/planner", label: "Planner", icon: ClipboardList },
@@ -16,6 +18,9 @@ const nav = [
   { to: "/review", label: "Review", icon: FileClock },
   { to: "/evolution", label: "Evolution", icon: BookOpen },
   { to: "/marketplace", label: "Marketplace", icon: Boxes },
+  { to: "/journey", label: "Beginner", icon: GraduationCap },
+  { to: "/system", label: "System", icon: MonitorCog },
+  { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -46,7 +51,8 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="sideStatus">
             <StatusLine icon={<Database size={14} />} label="SQLite" value="local" />
             <StatusLine icon={<Activity size={14} />} label="Langfuse" value={status.data?.langfuseConfigured ? "on" : "off"} />
-            <StatusLine icon={<Shield size={14} />} label="Sandbox" value="local" />
+            <StatusLine icon={<Shield size={14} />} label="Sandbox" value={status.data?.env.integrations?.aioSandboxConfigured ? "aio" : "off"} />
+            <StatusLine icon={<Boxes size={14} />} label="MCP" value={String(status.data?.mcpServers ?? 0)} />
           </div>
         </aside>
         <section className="workspace">{children}</section>
@@ -60,7 +66,7 @@ function StatusLine({ icon, label, value }: { icon: ReactNode; label: string; va
   return (
     <div className="statusLine">
       <span>{icon}{label}</span>
-      <strong>{value}</strong>
+      <Chip size="sm" variant="flat" color={value === "off" ? "warning" : "success"}>{value}</Chip>
     </div>
   );
 }

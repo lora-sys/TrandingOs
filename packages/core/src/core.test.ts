@@ -13,6 +13,7 @@ import {
   resolveLocalPaths,
   SessionStore,
   SkillRegistry,
+  TradingPiAgent,
   TradingPiDatabase,
   WorkflowEngine,
   type TradingPiEnv,
@@ -26,6 +27,8 @@ function testRuntime() {
     apiPort: 8787,
     webPort: 5173,
     defaultExchange: "binance",
+    exchangeFallbacks: ["okx", "bybit", "coinbase", "kraken"],
+    tradingMode: "paper",
   };
   const paths = ensureLocalPaths(resolveLocalPaths(env));
   const database = new TradingPiDatabase(paths.sqlitePath);
@@ -70,12 +73,20 @@ describe("Trading Pi local core", () => {
           "paper.order.create",
           "journal.entry.create",
           "review.daily",
+          "search.query",
+          "browser.search",
+          "mcp.health",
+          "workspace.create",
+          "marketplace.catalog.seed",
+          "strategy.create",
+          "backtest.run",
+          "artifact.preview",
           "artifact.read",
           "ai.respond",
         ]),
       );
       expect(rt.workflows.list().map((workflow) => workflow.id)).toEqual(
-        expect.arrayContaining(["chat.respond", "market.snapshot", "research.asset", "trade.plan", "review.daily"]),
+        expect.arrayContaining(["chat.respond", "market.snapshot", "research.asset", "trade.plan", "review.daily", "os.bootstrap", "strategy.backtest"]),
       );
     } finally {
       rt.database.close();
@@ -182,6 +193,66 @@ describe("Trading Pi local core", () => {
         metrics: { trades: number; journalEntries: number; ruleBreaks: number; disciplineScore: number };
       };
       expect(review.metrics).toMatchObject({ trades: 1, journalEntries: 1, ruleBreaks: 1, disciplineScore: 70 });
+    } finally {
+      rt.database.close();
+      rmSync(rt.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("bootstraps OS foundation domains without external network calls", async () => {
+    const rt = testRuntime();
+    try {
+      const result = await rt.workflows.run("os.bootstrap", {}, { ...rt, sessionId: "os-session" });
+      expect(result.runId).toMatch(/^wfr_/);
+      expect(rt.repos.list("workspaces").length).toBeGreaterThanOrEqual(3);
+      expect(rt.repos.list("marketplace_items").length).toBeGreaterThanOrEqual(4);
+      expect(rt.repos.list("mcp_servers").length).toBeGreaterThanOrEqual(1);
+      expect(rt.repos.list("audit_records").length).toBeGreaterThanOrEqual(1);
+    } finally {
+      rt.database.close();
+      rmSync(rt.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("routes slash commands through TradingPiAgent into workflows", async () => {
+    const rt = testRuntime();
+    try {
+      const agent = new TradingPiAgent({ ...rt });
+      const result = await agent.prompt({ message: "/bootstrap-os", sessionId: "agent-route-session" }) as {
+        sessionId: string;
+        text: string;
+        workflowResult?: { runId: string; output: unknown };
+      };
+      expect(result.sessionId).toMatch(/^ses_/);
+      expect(result.workflowResult?.runId).toMatch(/^wfr_/);
+      expect(result.text).toContain("Trading Pi OS bootstrap completed");
+      expect(rt.repos.list("timeline_events").some((event) => String(event.type) === "agent.intent")).toBe(true);
+      expect(rt.repos.list("artifacts").some((artifact) => String(artifact.type) === "os-bootstrap")).toBe(true);
+    } finally {
+      rt.database.close();
+      rmSync(rt.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stores artifact preview metadata and exposes preview content", async () => {
+    const rt = testRuntime();
+    try {
+      const artifact = rt.artifacts.create({
+        type: "research-report",
+        title: "Preview Test",
+        summary: "Preview summary",
+        markdown: "# Preview Test\n\nMarkdown content.",
+        sessionId: "preview-session",
+      });
+      const previewSkill = rt.skills.get("artifact.preview");
+      const preview = await previewSkill.execute({ artifactId: artifact.id }, { ...rt, sessionId: "preview-session" }) as {
+        content: string;
+        previewReady: boolean;
+        contentType: string;
+      };
+      expect(preview.content).toContain("Markdown content");
+      expect(preview.previewReady).toBe(true);
+      expect(preview.contentType).toBe("text/markdown");
     } finally {
       rt.database.close();
       rmSync(rt.dir, { recursive: true, force: true });

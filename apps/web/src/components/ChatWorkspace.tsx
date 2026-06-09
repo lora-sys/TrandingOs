@@ -1,3 +1,6 @@
+import { Button } from "@heroui/react/button";
+import { Card } from "@heroui/react/card";
+import { Chip } from "@heroui/react/chip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -46,13 +49,31 @@ export function ChatWorkspace() {
   };
 
   const mutation = useMutation({
-    mutationFn: async (prompt: string) => runPrompt(prompt, sessionId),
+    mutationFn: async (prompt: string) => tradingPiApi.sendMessage(prompt, sessionId),
     onSuccess: async (result) => {
       if (result.sessionId) setSessionId(result.sessionId);
-      setLocalItems((items) => [
-        ...items,
-        { id: `wf_${Date.now()}`, kind: "workflow", title: result.title, result: result.workflowResult },
-      ]);
+      if (result.workflowResult) {
+        setLocalItems((items) => [
+          ...items,
+          { id: `wf_${Date.now()}`, kind: "workflow", title: "Trading Pi Agent workflow completed", result: result.workflowResult! },
+        ]);
+      } else {
+        setLocalItems((items) => [
+          ...items,
+          {
+            id: `assistant_${Date.now()}`,
+            kind: "message",
+            message: {
+              id: `local_assistant_${Date.now()}`,
+              role: "assistant",
+              kind: "message",
+              content: result.text,
+              timestamp: new Date().toISOString(),
+              raw: result,
+            },
+          },
+        ]);
+      }
       await refresh();
     },
     onError: (error) => {
@@ -85,13 +106,15 @@ export function ChatWorkspace() {
           <p>One core agent, Workflow + Skills, local artifacts, approval-first execution.</p>
         </div>
         <div className="commandHints">
-          <span>/research ETH</span>
-          <span>/plan ETH/USDT 100 spot</span>
-          <span>/review-day</span>
+          <Chip size="sm" variant="flat" color="primary">/research ETH</Chip>
+          <Chip size="sm" variant="flat" color="success">/plan ETH/USDT 100 spot</Chip>
+          <Chip size="sm" variant="flat" color="secondary">/browser search ETH risks</Chip>
+          <Chip size="sm" variant="flat" color="warning">/review-day</Chip>
+          <Chip size="sm" variant="flat" color="danger">/evolve</Chip>
         </div>
       </div>
 
-      <div className="messageViewport" ref={parentRef}>
+      <Card className="messageViewport heroPanel" ref={parentRef}>
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const item = feed[virtualRow.index];
@@ -108,29 +131,38 @@ export function ChatWorkspace() {
           })}
         </div>
         {!feed.length && <div className="emptyState"><Bot size={28} /> Start with a slash command or ask Trading Pi directly.</div>}
-      </div>
+      </Card>
 
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.handleSubmit();
-        }}
-      >
-        <form.Field name="prompt">
-          {(field) => (
-            <input
-              aria-label="Trading Pi composer"
-              value={field.state.value}
-              onChange={(event) => field.handleChange(event.target.value)}
-              placeholder="Ask Trading Pi or run /research, /plan, /review-day..."
-            />
-          )}
-        </form.Field>
-        <button disabled={mutation.isPending} title="Send">
-          <Send size={18} />
-        </button>
-      </form>
+      <Card className="composerCard heroPanel">
+        <form
+          className="composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <form.Field name="prompt">
+            {(field) => (
+              <textarea
+                aria-label="Trading Pi composer"
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void form.handleSubmit();
+                  }
+                }}
+                placeholder="Ask Trading Pi or run /research, /plan, /review-day..."
+                rows={1}
+              />
+            )}
+          </form.Field>
+          <Button type="submit" variant="primary" isDisabled={mutation.isPending} title="Send">
+            <Send size={18} />
+          </Button>
+        </form>
+      </Card>
     </section>
   );
 }
@@ -139,74 +171,57 @@ function FeedCard({ item }: { item: FeedItem }) {
   if (item.kind === "message") {
     const Icon = item.message.role === "user" ? User : Bot;
     return (
-      <article className={`messageBubble ${item.message.role}`}>
-        <Icon size={16} />
-        <div>
-          <small>{item.message.role}</small>
+      <Card className={`feedCard messageBubble ${item.message.role}`}>
+        <Card.Header className="feedCardHeader">
+          <Icon size={16} />
+          <Chip size="sm" variant="flat" color={item.message.role === "user" ? "primary" : "success"}>{item.message.role}</Chip>
+        </Card.Header>
+        <Card.Content className="feedCardBody">
           <p>{item.message.content || item.message.kind}</p>
-        </div>
-      </article>
+        </Card.Content>
+      </Card>
     );
   }
   if (item.kind === "artifact") {
     return (
-      <article className="artifactCard">
-        <FileText size={18} />
-        <div>
+      <Card className="feedCard artifactCard">
+        <Card.Header className="feedCardHeader">
+          <FileText size={18} />
           <strong>{item.artifact.title}</strong>
+          <Chip size="sm" variant="flat" color="success">{item.artifact.type}</Chip>
+        </Card.Header>
+        <Card.Content className="feedCardBody">
           <p>{item.artifact.summary}</p>
-          <small>{item.artifact.type}</small>
-        </div>
-      </article>
+        </Card.Content>
+      </Card>
     );
   }
   if (item.kind === "workflow") {
     return (
-      <article className="skillRunCard">
-        <Workflow size={18} />
-        <div>
+      <Card className="feedCard skillRunCard">
+        <Card.Header className="feedCardHeader">
+          <Workflow size={18} />
           <strong>{item.title}</strong>
+          <Chip size="sm" variant="flat" color="primary">workflow</Chip>
+        </Card.Header>
+        <Card.Content className="feedCardBody">
           <p>{artifactSummary(item.result.output)}</p>
-        </div>
-      </article>
+        </Card.Content>
+      </Card>
     );
   }
   return (
-    <article className="approvalCard">
-      <AlertTriangle size={18} />
-      <div>
+    <Card className="feedCard approvalCard">
+      <Card.Header className="feedCardHeader">
+        <AlertTriangle size={18} />
         <strong>{item.title}</strong>
+        <Chip size="sm" variant="flat" color="warning">approval</Chip>
+      </Card.Header>
+      <Card.Content className="feedCardBody">
         <p>{item.detail}</p>
-      </div>
-    </article>
+      </Card.Content>
+    </Card>
   );
-}
-
-async function runPrompt(prompt: string, sessionId?: string) {
-  const research = prompt.match(/^\/research\s+(.+)$/i);
-  if (research) {
-    const result = await tradingPiApi.runWorkflow("research.asset", { symbol: research[1]?.trim() ?? "ETH" }, sessionId);
-    return { sessionId: result.sessionId, title: "Research workflow completed", workflowResult: result };
-  }
-  const plan = prompt.match(/^\/plan\s+(\S+)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\S+))?/i);
-  if (plan) {
-    const result = await tradingPiApi.runWorkflow(
-      "trade.plan",
-      { symbol: plan[1] ?? "ETH/USDT", budgetUsd: Number(plan[2] ?? 100), direction: plan[3] ?? "spot" },
-      sessionId,
-    );
-    return { sessionId: result.sessionId, title: "Trade plan workflow completed", workflowResult: result };
-  }
-  if (/^\/review-day/i.test(prompt)) {
-    const result = await tradingPiApi.runWorkflow("review.daily", { period: "daily" }, sessionId);
-    return { sessionId: result.sessionId, title: "Daily review completed", workflowResult: result };
-  }
-  const result = await tradingPiApi.sendMessage(prompt, sessionId);
-  return {
-    sessionId: result.sessionId,
-    title: "Agent response completed",
-    workflowResult: { sessionId: result.sessionId, runId: "agent.prompt", output: { text: result.text } },
-  };
 }
 
 function artifactSummary(output: unknown) {

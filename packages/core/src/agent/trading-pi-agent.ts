@@ -1,4 +1,5 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createTradingPiModel } from "../ai/model.js";
 import type { TradingPiEnv } from "../config/env.js";
 import type { Repositories } from "../db/repositories.js";
@@ -7,6 +8,7 @@ import type { MemoryStore } from "../memory/memory-store.js";
 import type { SessionStore } from "../sessions/session-store.js";
 import type { SkillRegistry } from "../skills/registry.js";
 import type { ArtifactEngine } from "../artifacts/artifact-engine.js";
+import type { WorkflowEngine } from "../workflows/workflow-engine.js";
 
 export class TradingPiAgent {
   constructor(
@@ -16,6 +18,7 @@ export class TradingPiAgent {
       sessions: SessionStore;
       memory: MemoryStore;
       skills: SkillRegistry;
+      workflows: WorkflowEngine;
       artifacts: ArtifactEngine;
       approvals: ApprovalEngine;
     },
@@ -30,8 +33,13 @@ export class TradingPiAgent {
       artifacts: this.deps.artifacts,
       approvals: this.deps.approvals,
       memory: this.deps.memory,
+      skills: this.deps.skills,
       sessionId: session.id,
     };
+    const routed = await this.routeSlashCommand(input.message, session.id, baseContext);
+    if (routed) {
+      return routed;
+    }
     const agent = new Agent({
       sessionId: session.id,
       toolExecution: "sequential",
@@ -104,6 +112,45 @@ If a source was not checked, say it is available as a capability, not online.
 If a source failed or was blocked, surface that plainly.`;
   }
 
+  private async routeSlashCommand(
+    message: string,
+    sessionId: string,
+    context: {
+      env: TradingPiEnv;
+      repos: Repositories;
+      artifacts: ArtifactEngine;
+      approvals: ApprovalEngine;
+      memory: MemoryStore;
+      skills: SkillRegistry;
+      sessionId: string;
+    },
+  ) {
+    const route = parseSlashCommand(message);
+    if (!route) return undefined;
+    this.deps.repos.createTimeline({
+      sessionId,
+      type: "agent.intent",
+      title: `Trading Pi Agent routed ${route.workflowId}`,
+      status: "completed",
+      payload: { message, workflowId: route.workflowId, input: route.input },
+    });
+    const workflowResult = await this.deps.workflows.run(route.workflowId, route.input, context);
+    const text = summarizeWorkflow(route.workflowId, workflowResult.output);
+    const assistantMessage: AgentMessage = fauxAssistantMessage(text, { timestamp: Date.now() });
+    this.deps.sessions.append(sessionId, "pi_message", assistantMessage);
+    this.deps.sessions.append(sessionId, "workflow_result", {
+      workflowId: route.workflowId,
+      runId: workflowResult.runId,
+      output: workflowResult.output,
+    });
+    return {
+      sessionId,
+      messages: [assistantMessage],
+      text,
+      workflowResult: { sessionId, ...workflowResult },
+    };
+  }
+
   private handleEvent(sessionId: string, event: AgentEvent) {
     this.deps.repos.createTimeline({
       sessionId,
@@ -129,4 +176,52 @@ function extractAssistantText(message: AgentMessage | undefined) {
 function compactEvent(event: AgentEvent) {
   if (event.type === "message_update") return { type: event.type };
   return event;
+}
+
+function parseSlashCommand(message: string): { workflowId: string; input: unknown } | undefined {
+  const trimmed = message.trim();
+  const research = trimmed.match(/^\/research\s+(.+)$/i);
+  if (research) return { workflowId: "research.asset", input: { symbol: research[1]?.trim() ?? "ETH" } };
+  const plan = trimmed.match(/^\/plan\s+(\S+)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\S+))?/i);
+  if (plan) {
+    return {
+      workflowId: "trade.plan",
+      input: { symbol: plan[1] ?? "ETH/USDT", budgetUsd: Number(plan[2] ?? 100), direction: plan[3] ?? "spot" },
+    };
+  }
+  if (/^\/review-day/i.test(trimmed)) return { workflowId: "review.daily", input: { period: "daily" } };
+  const backtest = trimmed.match(/^\/backtest\s+(\S+)(?:\s+(\S+))?(?:\s+(\S+))?/i);
+  if (backtest) {
+    return {
+      workflowId: "strategy.backtest",
+      input: { name: backtest[1] ?? "manual_strategy", symbol: backtest[2] ?? "ETH/USDT", timeframe: backtest[3] ?? "1h" },
+    };
+  }
+  const browser = trimmed.match(/^\/browser\s+(search|open|extract|screenshot|pdf)(?:\s+(.+))?$/i);
+  if (browser) {
+    const actionName = browser[1]?.toLowerCase() ?? "open";
+    const value = browser[2]?.trim() ?? "";
+    return {
+      workflowId: "browser.evidence",
+      input: actionName === "search" ? { action: "browser.search", query: value } : { action: `browser.${actionName}`, url: value },
+    };
+  }
+  const evolve = trimmed.match(/^\/evolve(?:\s+(.+))?$/i);
+  if (evolve) return { workflowId: "evolution.propose", input: { focus: evolve[1]?.trim() || "daily review and strategy discipline" } };
+  const bootstrap = trimmed.match(/^\/bootstrap-os$/i);
+  if (bootstrap) return { workflowId: "os.bootstrap", input: {} };
+  return undefined;
+}
+
+function summarizeWorkflow(workflowId: string, output: unknown) {
+  const text = JSON.stringify(output);
+  if (workflowId === "research.asset") return "Research workflow completed through Trading Pi Agent. A Research Report artifact was generated.";
+  if (workflowId === "trade.plan") return "Trade plan workflow completed through Trading Pi Agent. Trade Plan and Risk Report artifacts were generated.";
+  if (workflowId === "review.daily") return "Daily review workflow completed through Trading Pi Agent. A Review artifact was generated.";
+  if (workflowId === "strategy.backtest") return "Strategy backtest workflow completed through Trading Pi Agent. A Backtest Report artifact was generated.";
+  if (workflowId === "browser.evidence") return "Browser evidence workflow completed through Trading Pi Agent. Browser Artifact evidence was generated or marked unavailable.";
+  if (workflowId === "evolution.propose") return "Evolution proposal workflow completed through Trading Pi Agent. A guarded proposal artifact and approval gate were created.";
+  if (workflowId === "os.bootstrap") return "Trading Pi OS bootstrap completed. Workspace, MCP, Marketplace, and bootstrap artifact records were created.";
+  if (text.includes("approvalId")) return "Workflow is waiting for explicit approval.";
+  return "Workflow completed through Trading Pi Agent.";
 }

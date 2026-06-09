@@ -99,7 +99,7 @@ ${context.memory.contextBlock("user")}`,
     name: "Asset Research",
     description: "Generate an AI research report artifact from real market data.",
     riskLevel: "low",
-    execute: async (input: { symbol: string; exchange?: string }, context) => {
+    execute: async (input: { symbol: string; exchange?: string; workspaceId?: string }, context) => {
       const researchContext = await runSkill(context, "research.asset", input);
       const report = await runSkill<{ text: string }>(context, "research.report", {
         symbol: input.symbol,
@@ -109,10 +109,22 @@ ${context.memory.contextBlock("user")}`,
         type: "research-report",
         title: `Research Report ${input.symbol}`,
         summary: `AI research report for ${input.symbol}.`,
-        markdown: `# Research Report ${input.symbol}\n\n${report.text}\n\n## Observed Context\n\n\`\`\`json\n${JSON.stringify(researchContext, null, 2)}\n\`\`\`\n`,
+        markdown: `# Research Report ${input.symbol}\n\n${report.text}\n\n## Sources\n\n\`\`\`json\n${JSON.stringify((researchContext as any).sources ?? [], null, 2)}\n\`\`\`\n\n## Source Quality\n\n\`\`\`json\n${JSON.stringify((researchContext as any).sourceQuality ?? {}, null, 2)}\n\`\`\`\n\n## Observed Context\n\n\`\`\`json\n${JSON.stringify(researchContext, null, 2)}\n\`\`\`\n`,
       });
+      if (input.workspaceId) {
+        context.repos.linkWorkspace({ workspaceId: input.workspaceId, kind: "artifact", refId: (artifact as any).id, metadata: { workflow: "research.asset" } });
+      }
       return { symbol: input.symbol, researchContext, report, artifact };
     },
+  });
+
+  engine.register({
+    id: "browser.evidence",
+    name: "Browser Evidence",
+    description: "Run a Browser Skill through AIO Sandbox and create previewable evidence artifacts.",
+    riskLevel: "medium",
+    execute: async (input: { action: "browser.search" | "browser.open" | "browser.extract" | "browser.screenshot" | "browser.pdf"; url?: string; query?: string }, context) =>
+      runSkill(context, "browser.action", input),
   });
 
   engine.register({
@@ -176,6 +188,15 @@ Return sections: thesis, invalidation, entry, stop, take profit, risk, approval 
         summary: `Risk report for ${input.symbol} trade plan.`,
         markdown: `# Risk Report ${input.symbol}\n\n\`\`\`json\n${JSON.stringify({ positionSizing: risk, tradeRisk }, null, 2)}\n\`\`\`\n`,
       });
+      context.memory.write({
+        domain: "trade",
+        key: `trade-plan:${input.symbol}:${Date.now()}`,
+        value: `direction=${input.direction ?? "undecided"} entry=${entry} stop=${stop} budget=${input.budgetUsd}`,
+        sourceType: "artifact",
+        sourceId: (tradePlanArtifact as any).id,
+        importance: 0.7,
+        metadata: { symbol: input.symbol, risk: tradeRisk },
+      });
       return { market, risk, tradeRisk, plan, artifacts: { tradePlan: tradePlanArtifact, riskReport: riskArtifact } };
     },
   });
@@ -209,8 +230,75 @@ Return sections: Scorecard, What Worked, Rule Breaks, Risk Notes, Tomorrow Focus
         summary: report.text.slice(0, 240),
         artifactId: artifact.id,
       });
+      context.memory.write({
+        domain: "review",
+        key: `${reviewContext.period}:${reviewId}`,
+        value: report.text.slice(0, 400),
+        sourceType: "review",
+        sourceId: reviewId,
+        importance: 0.75,
+        metadata: { artifactId: artifact.id, metrics: reviewContext.metrics },
+      });
       return { reviewId, reviewContext, report, artifact };
     },
+  });
+
+  engine.register({
+    id: "os.bootstrap",
+    name: "OS Bootstrap",
+    description: "Initialize local OS domains: MCP catalog, marketplace catalog, default workspaces, and audit trail.",
+    riskLevel: "low",
+    execute: async (_input: {}, context) => {
+      const mcp = await runSkill(context, "mcp.health", { name: "Local MCP Catalog" });
+      const mcpDiscovery = await runSkill(context, "mcp.discover", {});
+      const marketplace = await runSkill(context, "marketplace.catalog.seed", {});
+      const workspaces = await Promise.all([
+        runSkill(context, "workspace.create", { id: "workspace_btc", name: "BTC Workspace", kind: "btc", context: { symbol: "BTC/USDT" } }),
+        runSkill(context, "workspace.create", { id: "workspace_eth", name: "ETH Workspace", kind: "eth", context: { symbol: "ETH/USDT" } }),
+        runSkill(context, "workspace.create", { id: "workspace_macro", name: "Macro Workspace", kind: "macro", context: { focus: "rates, dollar, liquidity" } }),
+      ]);
+      const artifact = await runSkill(context, "artifact.create", {
+        type: "os-bootstrap",
+        title: "Trading Pi OS Bootstrap",
+        summary: "Initialized MCP, marketplace, and workspace foundation domains.",
+        markdown: `# Trading Pi OS Bootstrap\n\n## MCP\n\n\`\`\`json\n${JSON.stringify({ health: mcp, discovery: mcpDiscovery }, null, 2)}\n\`\`\`\n\n## Marketplace\n\n\`\`\`json\n${JSON.stringify(marketplace, null, 2)}\n\`\`\`\n\n## Workspaces\n\n\`\`\`json\n${JSON.stringify(workspaces, null, 2)}\n\`\`\`\n`,
+      });
+      return { mcp, mcpDiscovery, marketplace, workspaces, artifact };
+    },
+  });
+
+  engine.register({
+    id: "strategy.backtest",
+    name: "Strategy Backtest Bridge",
+    description: "Create a strategy record, run sandbox backtest bridge, and generate a report artifact.",
+    riskLevel: "medium",
+    execute: async (input: { name: string; symbol: string; timeframe?: string; parameters?: unknown }, context) => {
+      const strategy = await runSkill<{ strategyId: string; score: number }>(context, "strategy.create", {
+        name: input.name,
+        parameters: input.parameters ?? {},
+        status: "testing",
+      });
+      const backtest = await runSkill(context, "backtest.run", {
+        strategyId: strategy.strategyId,
+        symbol: input.symbol,
+        timeframe: input.timeframe,
+      });
+      const artifact = await runSkill(context, "artifact.create", {
+        type: "backtest-report",
+        title: `Backtest Report ${input.name}`,
+        summary: `Sandbox backtest bridge report for ${input.name}.`,
+        markdown: `# Backtest Report ${input.name}\n\n\`\`\`json\n${JSON.stringify({ strategy, backtest }, null, 2)}\n\`\`\`\n`,
+      });
+      return { strategy, backtest, artifact };
+    },
+  });
+
+  engine.register({
+    id: "evolution.propose",
+    name: "Evolution Proposal",
+    description: "Propose guarded strategy improvements from review, memory, journal, and backtest context.",
+    riskLevel: "medium",
+    execute: async (input: { strategyId?: string; focus?: string }, context) => runSkill(context, "evolution.propose", input),
   });
 }
 

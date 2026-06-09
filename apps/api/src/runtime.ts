@@ -36,7 +36,7 @@ export function createRuntime() {
   skills.syncToDb(baseContext);
   registerDefaultWorkflows(workflows, skills);
   workflows.syncToDb(baseContext);
-  const agent = new TradingPiAgent({ env, repos, sessions, memory, skills, artifacts, approvals });
+  const agent = new TradingPiAgent({ env, repos, sessions, memory, skills, workflows, artifacts, approvals });
   return {
     env,
     envStatus: redactedEnv(env),
@@ -57,4 +57,3 @@ export function createRuntime() {
 }
 
 export type Runtime = ReturnType<typeof createRuntime>;
-

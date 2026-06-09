@@ -6,6 +6,14 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../browser-layer" },
+    { "path": "../journal" },
+    { "path": "../mcp-hub" },
+    { "path": "../memory-engine" },
+    { "path": "../research-hub" },
+    { "path": "../search-hub" },
+    { "path": "../strategy-engine" }
+  ]
 }
-
