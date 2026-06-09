@@ -46,6 +46,9 @@ export const tradingPiApi = {
     }),
   reviews: () => api<Row[]>("/api/reviews"),
   workspaces: () => api<Row[]>("/api/workspaces"),
+  workspaceContext: (id: string) => api<Row>(`/api/workspaces/${encodeURIComponent(id)}/context`),
+  workspaceMemory: (id: string) => api<Row[]>(`/api/workspaces/${encodeURIComponent(id)}/memory`),
+  workspaceArtifacts: (id: string) => api<Artifact[]>(`/api/workspaces/${encodeURIComponent(id)}/artifacts`),
   createWorkspace: (input: unknown, sessionId?: string) =>
     api<{ sessionId: string; output: unknown }>("/api/workspaces", {
       method: "POST",
@@ -58,7 +61,42 @@ export const tradingPiApi = {
       body: JSON.stringify({ sessionId }),
     }),
   mcpServers: () => api<Row[]>("/api/mcp/servers"),
+  discoverMcp: (q = "", sessionId?: string) =>
+    api<{ sessionId: string; output: unknown }>(`/api/mcp/discover?q=${encodeURIComponent(q)}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`),
+  registerMcp: (input: unknown, sessionId?: string) =>
+    api<{ sessionId: string; output: unknown }>("/api/mcp/servers", {
+      method: "POST",
+      body: JSON.stringify({ input, sessionId }),
+    }),
+  checkMcp: (id: string, sessionId?: string) =>
+    api<{ sessionId: string; output: unknown }>(`/api/mcp/servers/${encodeURIComponent(id)}/health`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+    }),
+  approveMcp: (id: string, input: unknown, sessionId?: string) =>
+    api<{ sessionId: string; output: unknown }>(`/api/mcp/servers/${encodeURIComponent(id)}/approval`, {
+      method: "POST",
+      body: JSON.stringify({ input, sessionId }),
+    }),
   browserHealth: () => api<Row>("/api/browser/health"),
+  browserAction: (input: unknown, sessionId?: string) =>
+    api<{ sessionId: string; output: unknown }>("/api/browser/actions", {
+      method: "POST",
+      body: JSON.stringify({ input, sessionId }),
+    }),
+  memoryQuery: (input: unknown) =>
+    api<{ output: Row[] }>("/api/memory/query", {
+      method: "POST",
+      body: JSON.stringify({ input }),
+    }),
+  memoryWrite: (input: unknown) =>
+    api<{ output: unknown }>("/api/memory/write", {
+      method: "POST",
+      body: JSON.stringify({ input }),
+    }),
   strategies: () => api<Row[]>("/api/strategies"),
   backtests: () => api<Row[]>("/api/backtests"),
+  evolutionProposals: () => api<Row[]>("/api/evolution/proposals"),
+  audit: () => api<Row[]>("/api/audit"),
+  cache: () => api<Row[]>("/api/cache"),
 };

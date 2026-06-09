@@ -36,12 +36,34 @@ export function ArtifactPreviewPanel() {
           </div>
           <Tabs aria-label="Artifact preview tabs">
             <Tabs.List>
-              <Tabs.Tab id="preview">Preview</Tabs.Tab>
+              <Tabs.Tab id="markdown">Markdown</Tabs.Tab>
+              <Tabs.Tab id="html">HTML</Tabs.Tab>
+              <Tabs.Tab id="pdf">PDF</Tabs.Tab>
+              <Tabs.Tab id="data">Data</Tabs.Tab>
               <Tabs.Tab id="meta">Meta</Tabs.Tab>
             </Tabs.List>
-            <Tabs.Panel id="preview">
+            <Tabs.Panel id="markdown">
               <div className="previewScroll">
                 <pre>{preview.data?.output.content ?? latest.summary}</pre>
+              </div>
+            </Tabs.Panel>
+            <Tabs.Panel id="html">
+              <div className="previewScroll">
+                {String(preview.data?.output.contentType ?? "").includes("html") ? (
+                  <iframe title="HTML artifact preview" className="artifactFrame" sandbox="allow-same-origin" srcDoc={preview.data?.output.content ?? ""} />
+                ) : (
+                  <pre>{JSON.stringify({ previewReady: preview.data?.output.previewReady, previewPayload: preview.data?.output.previewPayload }, null, 2)}</pre>
+                )}
+              </div>
+            </Tabs.Panel>
+            <Tabs.Panel id="pdf">
+              <div className="previewScroll">
+                <pre>{JSON.stringify({ contentType: preview.data?.output.contentType, export: "PDF export is available when Browser Skill/AIO Sandbox produces a PDF artifact.", previewPayload: preview.data?.output.previewPayload }, null, 2)}</pre>
+              </div>
+            </Tabs.Panel>
+            <Tabs.Panel id="data">
+              <div className="previewScroll">
+                <pre>{JSON.stringify(latest, null, 2)}</pre>
               </div>
             </Tabs.Panel>
             <Tabs.Panel id="meta">

@@ -41,6 +41,12 @@ export class TradingPiDatabase {
         scope TEXT NOT NULL,
         key TEXT NOT NULL,
         value TEXT NOT NULL,
+        domain TEXT,
+        workspace_id TEXT,
+        source_type TEXT,
+        source_id TEXT,
+        importance REAL NOT NULL DEFAULT 0.5,
+        metadata_json TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(scope, key)
@@ -205,8 +211,48 @@ export class TradingPiDatabase {
         status TEXT NOT NULL,
         permission TEXT NOT NULL,
         health_json TEXT NOT NULL,
+        manifest_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_discoveries (
+        id TEXT PRIMARY KEY,
+        query TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        candidates_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_permissions (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        permission TEXT NOT NULL,
+        status TEXT NOT NULL,
+        approval_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS browser_sessions (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        status TEXT NOT NULL,
+        action TEXT NOT NULL,
+        url TEXT,
+        payload_json TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        artifact_id TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS workspace_links (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        ref_id TEXT NOT NULL,
+        metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS marketplace_items (
@@ -249,11 +295,29 @@ export class TradingPiDatabase {
         artifact_id TEXT,
         created_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS evolution_proposals (
+        id TEXT PRIMARY KEY,
+        strategy_id TEXT,
+        status TEXT NOT NULL,
+        proposal_json TEXT NOT NULL,
+        artifact_id TEXT,
+        approval_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
+    this.addColumnIfMissing("memory_records", "domain", "TEXT");
+    this.addColumnIfMissing("memory_records", "workspace_id", "TEXT");
+    this.addColumnIfMissing("memory_records", "source_type", "TEXT");
+    this.addColumnIfMissing("memory_records", "source_id", "TEXT");
+    this.addColumnIfMissing("memory_records", "importance", "REAL NOT NULL DEFAULT 0.5");
+    this.addColumnIfMissing("memory_records", "metadata_json", "TEXT");
     this.addColumnIfMissing("artifacts", "content_type", "TEXT NOT NULL DEFAULT 'text/markdown'");
     this.addColumnIfMissing("artifacts", "content", "TEXT");
     this.addColumnIfMissing("artifacts", "preview_ready", "INTEGER NOT NULL DEFAULT 0");
     this.addColumnIfMissing("artifacts", "preview_payload_json", "TEXT");
+    this.addColumnIfMissing("mcp_servers", "manifest_json", "TEXT NOT NULL DEFAULT '{}'");
   }
 
   private addColumnIfMissing(table: string, column: string, definition: string) {

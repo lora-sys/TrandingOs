@@ -147,6 +147,7 @@ nav { display: grid; gap: 4px; }
 .previewMeta { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 0 12px 10px; }
 .previewScroll { max-height: 56vh; overflow: auto; padding: 10px 12px 12px; }
 .previewScroll pre { white-space: pre-wrap; margin: 0; color: #d7e2ed; font: 12px/1.55 "JetBrains Mono", ui-monospace, monospace; }
+.artifactFrame { width: 100%; min-height: 420px; border: 1px solid #26384e; border-radius: 8px; background: #fff; }
 .previewActions { display: flex; gap: 8px; padding: 0 12px 12px; }
 
 .inspectorPanel, .controlPanel, .tableSection {
@@ -199,6 +200,32 @@ nav { display: grid; gap: 4px; }
 .controlPanel { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)) auto; gap: 12px; align-items: end; }
 .workspaceForm { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)) auto auto; gap: 12px; width: 100%; align-items: end; }
 .marketHeroGrid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; padding: 0 13px 13px; align-items: stretch; }
+.metric {
+  min-height: 86px;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  border: 1px solid #24364b;
+  border-radius: 8px;
+  background: #0d1522;
+  padding: 12px;
+}
+.metric span { color: #92a5bb; font-size: 12px; }
+.metric strong { color: #e8f8ee; font-size: 20px; overflow-wrap: anywhere; }
+.journeyGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; padding: 0 13px 13px; }
+.journeyStep {
+  min-height: 132px;
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  border: 1px solid #26384e;
+  border-radius: 8px;
+  background: #0e1725;
+  padding: 12px;
+}
+.journeyStep strong { color: #f2f8ff; }
+.journeyStep span { color: #9fb1c5; font-size: 13px; line-height: 1.45; }
+.inlineActions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .plannerGrid { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
 .journalForm { grid-template-columns: repeat(4, minmax(140px, 1fr)); }
 .journalForm .wide { grid-column: 1 / -1; }

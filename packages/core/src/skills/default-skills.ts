@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { complete } from "@earendil-works/pi-ai";
-import { AioSandboxBrowserLayer } from "@trading-pi/browser-layer";
+import { AioSandboxBrowserLayer, type BrowserAction, type BrowserLayerActionResult } from "@trading-pi/browser-layer";
 import { normalizeJournalInput } from "@trading-pi/journal";
+import { checkMcpHealth, discoverMcpServers, requiresMcpApproval } from "@trading-pi/mcp-hub";
+import { buildResearchBundle, researchQueryFor } from "@trading-pi/research-hub";
 import { SearchHub } from "@trading-pi/search-hub";
 import { scoreStrategy } from "@trading-pi/strategy-engine";
 import { Type } from "typebox";
@@ -106,6 +108,16 @@ export function registerDefaultSkills(registry: SkillRegistry) {
         errors.coingecko = error instanceof Error ? error.message : String(error);
       }
       try {
+        outputs.coinMarketCap = await fetchCoinMarketCapQuote(context.env.coinMarketCapApiKey, input.symbol);
+      } catch (error) {
+        errors.coinMarketCap = error instanceof Error ? error.message : String(error);
+      }
+      try {
+        outputs.defiLlama = await fetchDefiLlamaPrice(input.symbol);
+      } catch (error) {
+        errors.defiLlama = error instanceof Error ? error.message : String(error);
+      }
+      try {
         outputs.ccxtTicker = await fetchCcxtTicker(input.exchange ?? context.env.defaultExchange, input.symbol);
       } catch (error) {
         errors.ccxtTicker = error instanceof Error ? error.message : String(error);
@@ -115,7 +127,18 @@ export function registerDefaultSkills(registry: SkillRegistry) {
       } catch (error) {
         errors.ccxtOhlcv = error instanceof Error ? error.message : String(error);
       }
-      return { symbol: input.symbol, exchange: input.exchange ?? context.env.defaultExchange, outputs, errors, observedAt: new Date().toISOString() };
+      const result = {
+        symbol: input.symbol,
+        exchange: input.exchange ?? context.env.defaultExchange,
+        layer: "market-data-layer",
+        router: "ccxt-fallback-only",
+        outputs,
+        errors,
+        observedAt: new Date().toISOString(),
+      };
+      context.repos.setCache({ namespace: "market", key: `market:${input.symbol}:${input.exchange ?? context.env.defaultExchange}`, value: result, source: "market-data-layer", ttlMs: 60_000 });
+      context.repos.createAuditRecord({ category: "market", action: "market.snapshot", status: Object.keys(outputs).length ? "completed" : "failed", payload: { symbol: input.symbol, errors } });
+      return result;
     },
   });
 
@@ -197,14 +220,68 @@ export function registerDefaultSkills(registry: SkillRegistry) {
       }),
       execute: async (input, context) => {
         const layer = browserLayer(context);
-        if (action === "search") return layer.search(input.query ?? "");
-        if (action === "open") return layer.open(input.url ?? "");
-        if (action === "extract") return layer.extract(input.url ?? "");
-        if (action === "screenshot") return layer.screenshot(input.url ?? "");
-        return layer.pdf(input.url ?? "");
+        const result =
+          action === "search"
+            ? await layer.search(input.query ?? "")
+            : action === "open"
+              ? await layer.open(input.url ?? "")
+              : action === "extract"
+                ? await layer.extract(input.url ?? "")
+                : action === "screenshot"
+                  ? await layer.screenshot(input.url ?? "")
+                  : await layer.pdf(input.url ?? "");
+        const artifact = await createBrowserArtifact(action, input, result, context);
+        context.repos.createBrowserSession({
+          id: result.sessionId,
+          provider: result.provider,
+          status: result.status,
+          action: result.action,
+          url: result.url,
+          payload: input,
+          result,
+          artifactId: artifact?.id,
+        });
+        context.repos.createAuditRecord({ category: "browser", action: result.action, status: result.status, payload: redactBrowserResult(result) });
+        return { ...result, artifact };
       },
     });
   }
+
+  registry.register({
+    id: "browser.action",
+    name: "Browser Action",
+    description: "Run a normalized Browser Layer action through AIO Sandbox and persist evidence.",
+    riskLevel: "medium",
+    permission: "read",
+    parameters: Type.Object({
+      action: Type.Union([
+        Type.Literal("browser.search"),
+        Type.Literal("browser.open"),
+        Type.Literal("browser.extract"),
+        Type.Literal("browser.screenshot"),
+        Type.Literal("browser.pdf"),
+      ]),
+      url: Type.Optional(Type.String()),
+      query: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const payload = input.action === "browser.search" ? { query: input.query ?? "" } : { url: input.url ?? "" };
+      const result = await browserLayer(context).action(input.action as BrowserAction, payload);
+      const artifact = await createBrowserArtifact(input.action.replace("browser.", ""), payload, result, context);
+      context.repos.createBrowserSession({
+        id: result.sessionId,
+        provider: result.provider,
+        status: result.status,
+        action: result.action,
+        url: result.url,
+        payload,
+        result,
+        artifactId: artifact?.id,
+      });
+      context.repos.createAuditRecord({ category: "browser", action: result.action, status: result.status, payload: redactBrowserResult(result) });
+      return { ...result, artifact };
+    },
+  });
 
   registry.register({
     id: "risk.positionSizing",
@@ -275,16 +352,33 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     parameters: Type.Object({
       symbol: Type.String(),
       exchange: Type.Optional(Type.String()),
+      workspaceId: Type.Optional(Type.String()),
     }),
     execute: async (input, context) => {
       const snapshot = await registry.get("market.snapshot").execute(input, context);
-      return {
+      const search = await registry.get("search.query").execute({ query: researchQueryFor(input.symbol), limit: 5 }, context);
+      const browser = await registry.get("browser.search").execute({ query: researchQueryFor(input.symbol) }, context);
+      const memory = input.workspaceId ? context.memory.workspaceContext(input.workspaceId) : context.memory.domainContext("research");
+      const bundle = buildResearchBundle({
         symbol: input.symbol,
-        snapshot,
-        search: await registry.get("search.query").execute({ query: `${input.symbol} market news risk catalyst`, limit: 5 }, context),
-        memory: context.memory.contextBlock("user"),
-        requestedAt: new Date().toISOString(),
-      };
+        workspaceId: input.workspaceId,
+        marketSnapshot: snapshot,
+        searchResult: search,
+        browserResult: browser,
+        memoryContext: memory,
+      });
+      context.memory.write({
+        domain: "research",
+        workspaceId: input.workspaceId,
+        key: `${input.symbol}:latest-research-context`,
+        value: `Source quality ${bundle.sourceQuality.score}/100 with ${bundle.sourceQuality.completed}/${bundle.sourceQuality.total} sources completed.`,
+        sourceType: "skill",
+        sourceId: "research.asset",
+        importance: 0.72,
+        metadata: { symbol: input.symbol, sourceQuality: bundle.sourceQuality },
+      });
+      context.repos.createAuditRecord({ category: "research", action: "research.asset", status: "completed", payload: { symbol: input.symbol, sourceQuality: bundle.sourceQuality } });
+      return bundle;
     },
   });
 
@@ -324,6 +418,9 @@ Return sections: Market Snapshot, Source Quality, Thesis, Key Risks, Watchlist L
       title: Type.String(),
       summary: Type.String(),
       markdown: Type.String(),
+      contentType: Type.Optional(Type.String()),
+      previewReady: Type.Optional(Type.Boolean()),
+      previewPayload: Type.Optional(Type.Any()),
     }),
     execute: async (input, context) =>
       context.artifacts.create({
@@ -436,8 +533,51 @@ ${normalized.notes}
         payload: normalized,
       });
       context.repos.attachJournalArtifact(journalId, artifact.id);
+      context.memory.write({
+        domain: "trade",
+        key: `journal:${journalId}`,
+        value: `${normalized.mood ?? "mood unknown"} discipline=${normalized.disciplineScore ?? 0}: ${normalized.notes.slice(0, 220)}`,
+        sourceType: "journal",
+        sourceId: journalId,
+        importance: 0.65,
+        metadata: { rulesViolated: normalized.rulesViolated, artifactId: artifact.id },
+      });
       return { journalId, artifact };
     },
+  });
+
+  registry.register({
+    id: "memory.write",
+    name: "Write Memory",
+    description: "Persist domain memory for conversation, trade, review, skill, research, strategy, and workspace context.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({
+      domain: Type.String(),
+      key: Type.String(),
+      value: Type.String(),
+      workspaceId: Type.Optional(Type.String()),
+      importance: Type.Optional(Type.Number()),
+      sourceType: Type.Optional(Type.String()),
+      sourceId: Type.Optional(Type.String()),
+      metadata: Type.Optional(Type.Any()),
+    }),
+    execute: async (input, context) => context.memory.write(input as never),
+  });
+
+  registry.register({
+    id: "memory.query",
+    name: "Query Memory",
+    description: "Read long-term Trading Pi memory by domain, workspace, or search text.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      domain: Type.Optional(Type.String()),
+      workspaceId: Type.Optional(Type.String()),
+      q: Type.Optional(Type.String()),
+      limit: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, context) => context.memory.query(input as never),
   });
 
   registry.register({
@@ -452,7 +592,91 @@ ${normalized.notes}
       kind: Type.Union([Type.Literal("btc"), Type.Literal("eth"), Type.Literal("macro"), Type.Literal("custom")]),
       context: Type.Optional(Type.Any()),
     }),
-    execute: async (input, context) => ({ workspaceId: context.repos.upsertWorkspace(input) }),
+    execute: async (input, context) => {
+      const workspaceId = context.repos.upsertWorkspace(input);
+      context.memory.write({
+        domain: "workspace",
+        workspaceId,
+        key: "workspace.context",
+        value: JSON.stringify(input.context ?? {}),
+        sourceType: "skill",
+        sourceId: "workspace.create",
+        importance: 0.8,
+        metadata: { kind: input.kind, name: input.name },
+      });
+      context.repos.createAuditRecord({ category: "workspace", action: "workspace.create", status: "completed", payload: { workspaceId, kind: input.kind } });
+      return { workspaceId };
+    },
+  });
+
+  registry.register({
+    id: "workspace.context",
+    name: "Workspace Context",
+    description: "Read workspace as context + memory + linked artifacts/workflows.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({ workspaceId: Type.String() }),
+    execute: async (input, context) => context.repos.workspaceContext(input.workspaceId),
+  });
+
+  registry.register({
+    id: "mcp.discover",
+    name: "MCP Discovery",
+    description: "Discover MCP candidates through the local MCP Hub catalog.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({ query: Type.Optional(Type.String()) }),
+    execute: async (input, context) => {
+      const discovery = discoverMcpServers(input.query ?? "");
+      const discoveryId = context.repos.createMcpDiscovery({ query: input.query ?? "", provider: discovery.provider, candidates: discovery.candidates });
+      context.repos.createAuditRecord({ category: "mcp", action: "mcp.discover", status: "completed", payload: { discoveryId, count: discovery.candidates.length } });
+      return { discoveryId, ...discovery };
+    },
+  });
+
+  registry.register({
+    id: "mcp.register",
+    name: "MCP Register",
+    description: "Register an MCP server as a Skill Registry extension layer.",
+    riskLevel: "medium",
+    permission: "write",
+    parameters: Type.Object({
+      id: Type.Optional(Type.String()),
+      name: Type.String(),
+      command: Type.Optional(Type.String()),
+      url: Type.Optional(Type.String()),
+      description: Type.Optional(Type.String()),
+      permission: Type.Optional(Type.String()),
+      capabilities: Type.Optional(Type.Array(Type.String())),
+    }),
+    execute: async (input, context) => {
+      if (requiresMcpApproval(input.permission)) {
+        const approvalId = context.approvals.request({
+          action: "mcp.register",
+          riskLevel: "high",
+          reason: `MCP ${input.name} requests ${input.permission} permission.`,
+          payload: input,
+          sessionId: context.sessionId,
+          workflowRunId: context.workflowRunId,
+        });
+        const serverId = context.repos.upsertMcpServer({ ...input, status: "testing", permission: input.permission ?? "read", manifest: input });
+        const permissionId = context.repos.upsertMcpPermission({ serverId, permission: input.permission ?? "read", status: "pending", approvalId });
+        return { blocked: true, approvalId, serverId, permissionId };
+      }
+      const health = checkMcpHealth(input as never);
+      const serverId = context.repos.upsertMcpServer({ ...input, status: health.status, permission: input.permission ?? "read", health, manifest: input });
+      context.repos.upsertMarketplaceItem({
+        id: `market_${serverId}`,
+        kind: "mcp",
+        name: input.name,
+        description: input.description ?? "Registered MCP server.",
+        status: "installed",
+        permission: input.permission ?? "read",
+        manifest: input,
+      });
+      context.repos.createAuditRecord({ category: "mcp", action: "mcp.register", status: "completed", payload: { serverId, health } });
+      return { serverId, health };
+    },
   });
 
   registry.register({
@@ -467,7 +691,7 @@ ${normalized.notes}
       url: Type.Optional(Type.String()),
     }),
     execute: async (input, context) => {
-      const health = { status: input.url ? "configured" : "local-catalog", checkedAt: new Date().toISOString() };
+      const health = checkMcpHealth({ id: input.id, name: input.name ?? "Local MCP Catalog", url: input.url });
       const serverId = context.repos.upsertMcpServer({
         id: input.id,
         name: input.name ?? "Local MCP Catalog",
@@ -475,9 +699,31 @@ ${normalized.notes}
         status: health.status,
         permission: "read",
         health,
+        manifest: { id: input.id, name: input.name ?? "Local MCP Catalog", url: input.url },
       });
       context.repos.createAuditRecord({ category: "mcp", action: "mcp.health", status: health.status, payload: { serverId, health } });
       return { serverId, health };
+    },
+  });
+
+  registry.register({
+    id: "mcp.permission.request",
+    name: "MCP Permission Request",
+    description: "Create an approval gate for enabling MCP permissions.",
+    riskLevel: "high",
+    permission: "dangerous",
+    parameters: Type.Object({ serverId: Type.String(), permission: Type.String(), reason: Type.Optional(Type.String()) }),
+    execute: async (input, context) => {
+      const approvalId = context.approvals.request({
+        action: "mcp.permission",
+        riskLevel: "high",
+        reason: input.reason ?? `Enable MCP ${input.serverId} with ${input.permission} permission.`,
+        payload: input,
+        sessionId: context.sessionId,
+        workflowRunId: context.workflowRunId,
+      });
+      const permissionId = context.repos.upsertMcpPermission({ serverId: input.serverId, permission: input.permission, status: "pending", approvalId });
+      return { blocked: true, approvalId, permissionId };
     },
   });
 
@@ -493,7 +739,10 @@ ${normalized.notes}
         ["skill", "Search Hub", "Unified Exa/Tavily/Jina/free search skills."],
         ["workflow", "Research Hub", "Research workflow entry via Search/Browser/Market context."],
         ["mcp", "Local MCP Catalog", "MCP registry, discovery, health, and permissions."],
+        ["mcp", "AIO Sandbox Browser", "Browser search/open/extract/screenshot/pdf through sandbox skills."],
+        ["workflow", "Evolution Loop", "Review strategies, run backtests, and propose guarded improvements."],
         ["template", "BTC Workspace", "Default BTC workspace template."],
+        ["template", "Beginner Journey", "Learning route from mock mode to paper review and guarded readiness."],
       ] as const;
       return {
         items: items.map(([kind, name, description]) =>
@@ -532,6 +781,36 @@ ${normalized.notes}
   });
 
   registry.register({
+    id: "strategy.lifecycle",
+    name: "Strategy Lifecycle",
+    description: "Update strategy lifecycle status through draft/testing/verified/deprecated.",
+    riskLevel: "medium",
+    permission: "write",
+    parameters: Type.Object({
+      id: Type.Optional(Type.String()),
+      name: Type.String(),
+      version: Type.Optional(Type.String()),
+      status: Type.Union([Type.Literal("draft"), Type.Literal("testing"), Type.Literal("verified"), Type.Literal("deprecated")]),
+      parameters: Type.Optional(Type.Any()),
+      score: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, context) => {
+      const strategyId = context.repos.upsertStrategy(input);
+      context.repos.createAuditRecord({ category: "strategy", action: "strategy.lifecycle", status: input.status, payload: { strategyId } });
+      context.memory.write({
+        domain: "strategy",
+        key: `strategy:${strategyId}`,
+        value: `${input.name} ${input.version ?? "1.0.0"} is ${input.status} score=${input.score ?? 0}`,
+        sourceType: "skill",
+        sourceId: "strategy.lifecycle",
+        importance: 0.7,
+        metadata: { strategyId, status: input.status },
+      });
+      return { strategyId };
+    },
+  });
+
+  registry.register({
     id: "backtest.run",
     name: "Run Backtest",
     description: "Create a sandbox backtest record linking Strategy Engine and Evolution Engine.",
@@ -545,7 +824,69 @@ ${normalized.notes}
     execute: async (input, context) => {
       const metrics = { symbol: input.symbol, timeframe: input.timeframe ?? "1h", mode: "sandbox", note: "Backtest bridge foundation record." };
       const backtestId = context.repos.createBacktest({ strategyId: input.strategyId, status: "completed", metrics });
+      context.repos.createAuditRecord({ category: "backtest", action: "backtest.run", status: "completed", payload: { backtestId, metrics } });
       return { backtestId, metrics };
+    },
+  });
+
+  registry.register({
+    id: "backtest.compare",
+    name: "Compare Backtests",
+    description: "Compare recent sandbox backtest bridge records for Strategy/Evolution.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({ strategyId: Type.Optional(Type.String()) }),
+    execute: async (input, context) => {
+      const rows = input.strategyId
+        ? context.repos.db.prepare("SELECT * FROM backtests WHERE strategy_id = ? ORDER BY created_at DESC LIMIT 20").all(input.strategyId)
+        : context.repos.list("backtests");
+      return { strategyId: input.strategyId ?? null, rows, comparedAt: new Date().toISOString() };
+    },
+  });
+
+  registry.register({
+    id: "evolution.propose",
+    name: "Evolution Proposal",
+    description: "Create a guarded strategy/workflow improvement proposal from review, journal, memory, and backtests.",
+    riskLevel: "medium",
+    permission: "write",
+    parameters: Type.Object({
+      strategyId: Type.Optional(Type.String()),
+      focus: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const review = context.repos.reviewMetrics();
+      const strategyMemory = context.memory.domainContext("strategy");
+      const reviewMemory = context.memory.domainContext("review");
+      const proposal = {
+        focus: input.focus ?? "discipline and risk consistency",
+        strategyId: input.strategyId ?? null,
+        review,
+        memory: { strategy: strategyMemory, review: reviewMemory },
+        recommendedLifecycle: "testing",
+        guardrail: "Proposal only. Applying strategy changes requires explicit approval.",
+        proposedAt: new Date().toISOString(),
+      };
+      const artifact = context.artifacts.create({
+        type: "evolution-proposal",
+        title: "Evolution Proposal",
+        summary: `Strategy improvement proposal focused on ${proposal.focus}.`,
+        markdown: `# Evolution Proposal\n\n\`\`\`json\n${JSON.stringify(proposal, null, 2)}\n\`\`\`\n`,
+        sessionId: context.sessionId,
+        workflowRunId: context.workflowRunId,
+        payload: proposal,
+      });
+      const approvalId = context.approvals.request({
+        action: "evolution.apply",
+        riskLevel: "high",
+        reason: "Applying an evolution proposal changes strategy behavior and requires guarded approval.",
+        payload: proposal,
+        sessionId: context.sessionId,
+        workflowRunId: context.workflowRunId,
+      });
+      const proposalId = context.repos.createEvolutionProposal({ strategyId: input.strategyId, proposal, artifactId: artifact.id, approvalId });
+      context.repos.createAuditRecord({ category: "evolution", action: "evolution.propose", status: "blocked", payload: { proposalId, approvalId } });
+      return { proposalId, proposal, artifact, blocked: true, approvalId };
     },
   });
 
@@ -562,6 +903,7 @@ ${normalized.notes}
       period: input.period ?? "daily",
       metrics: context.repos.reviewMetrics(),
       portfolio: context.repos.portfolioSnapshot(),
+      memory: context.memory.domainContext("trade"),
       generatedAt: new Date().toISOString(),
     }),
   });
@@ -590,4 +932,92 @@ ${normalized.notes}
       blocked: true,
     }),
   });
+}
+
+async function fetchCoinMarketCapQuote(apiKey: string | undefined, symbol: string) {
+  if (!apiKey) throw new Error("CoinMarketCap is not configured. Set COINMARKETCAP_API_KEY to enable this source.");
+  const base = symbol.split("/")[0]?.toUpperCase() ?? symbol.toUpperCase();
+  const url = new URL("https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest");
+  url.searchParams.set("symbol", base);
+  const response = await fetch(url, { headers: { "X-CMC_PRO_API_KEY": apiKey } });
+  if (!response.ok) throw new Error(`CoinMarketCap HTTP ${response.status}`);
+  const json = (await response.json()) as any;
+  const quote = json.data?.[base]?.quote?.USD;
+  if (!quote) throw new Error(`CoinMarketCap did not return USD quote for ${base}`);
+  return {
+    source: "coinmarketcap",
+    symbol,
+    priceUsd: quote.price,
+    change24h: quote.percent_change_24h ?? null,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+async function fetchDefiLlamaPrice(symbol: string) {
+  const base = symbol.split("/")[0]?.toUpperCase() ?? symbol.toUpperCase();
+  const ids: Record<string, string> = {
+    BTC: "coingecko:bitcoin",
+    ETH: "coingecko:ethereum",
+    SOL: "coingecko:solana",
+    BNB: "coingecko:binancecoin",
+    XRP: "coingecko:ripple",
+    DOGE: "coingecko:dogecoin",
+  };
+  const coinId = ids[base];
+  if (!coinId) throw new Error(`DefiLlama price mapping is not configured for ${base}`);
+  const response = await fetch(`https://coins.llama.fi/prices/current/${encodeURIComponent(coinId)}`);
+  if (!response.ok) throw new Error(`DefiLlama HTTP ${response.status}`);
+  const json = (await response.json()) as any;
+  const price = json.coins?.[coinId];
+  if (!price) throw new Error(`DefiLlama did not return price for ${coinId}`);
+  return { source: "defillama", symbol, coinId, priceUsd: price.price, confidence: price.confidence ?? null, fetchedAt: new Date().toISOString() };
+}
+
+async function createBrowserArtifact(action: string, input: unknown, result: BrowserLayerActionResult, context: SkillContext) {
+  const kind = result.artifactKind ?? "markdown";
+  const title = `Browser ${action} ${result.url ?? (input as any)?.url ?? (input as any)?.query ?? ""}`.trim();
+  const contentType = kind === "html" ? "text/html" : kind === "pdf" ? "application/pdf" : kind === "png" ? "image/png" : "text/markdown";
+  const content = result.content ?? JSON.stringify(redactBrowserResult(result), null, 2);
+  const markdown = `# ${title}
+
+- Status: ${result.status}
+- Provider: ${result.provider}
+- Session: ${result.sessionId}
+- Reason: ${result.reason ?? "none"}
+
+## Result
+
+\`\`\`${kind === "html" ? "html" : "json"}
+${content}
+\`\`\`
+`;
+  if (result.status === "unavailable" || action === "open" || action === "search" || action === "extract" || action === "screenshot" || action === "pdf") {
+    return context.artifacts.create({
+      type: `browser-${action}`,
+      title,
+      summary: result.reason ?? `Browser ${action} evidence from ${result.provider}.`,
+      markdown,
+      contentType,
+      previewReady: true,
+      previewPayload: { kind, provider: result.provider, sessionId: result.sessionId, status: result.status, url: result.url },
+      sessionId: context.sessionId,
+      workflowRunId: context.workflowRunId,
+      payload: { input, result: redactBrowserResult(result) },
+    });
+  }
+  return undefined;
+}
+
+function redactBrowserResult(result: BrowserLayerActionResult) {
+  return {
+    status: result.status,
+    action: result.action,
+    sessionId: result.sessionId,
+    provider: result.provider,
+    observedAt: result.observedAt,
+    contentType: result.contentType,
+    artifactKind: result.artifactKind,
+    url: result.url,
+    reason: result.reason,
+  };
 }

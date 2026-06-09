@@ -197,6 +197,17 @@ function parseSlashCommand(message: string): { workflowId: string; input: unknow
       input: { name: backtest[1] ?? "manual_strategy", symbol: backtest[2] ?? "ETH/USDT", timeframe: backtest[3] ?? "1h" },
     };
   }
+  const browser = trimmed.match(/^\/browser\s+(search|open|extract|screenshot|pdf)(?:\s+(.+))?$/i);
+  if (browser) {
+    const actionName = browser[1]?.toLowerCase() ?? "open";
+    const value = browser[2]?.trim() ?? "";
+    return {
+      workflowId: "browser.evidence",
+      input: actionName === "search" ? { action: "browser.search", query: value } : { action: `browser.${actionName}`, url: value },
+    };
+  }
+  const evolve = trimmed.match(/^\/evolve(?:\s+(.+))?$/i);
+  if (evolve) return { workflowId: "evolution.propose", input: { focus: evolve[1]?.trim() || "daily review and strategy discipline" } };
   const bootstrap = trimmed.match(/^\/bootstrap-os$/i);
   if (bootstrap) return { workflowId: "os.bootstrap", input: {} };
   return undefined;
@@ -208,6 +219,8 @@ function summarizeWorkflow(workflowId: string, output: unknown) {
   if (workflowId === "trade.plan") return "Trade plan workflow completed through Trading Pi Agent. Trade Plan and Risk Report artifacts were generated.";
   if (workflowId === "review.daily") return "Daily review workflow completed through Trading Pi Agent. A Review artifact was generated.";
   if (workflowId === "strategy.backtest") return "Strategy backtest workflow completed through Trading Pi Agent. A Backtest Report artifact was generated.";
+  if (workflowId === "browser.evidence") return "Browser evidence workflow completed through Trading Pi Agent. Browser Artifact evidence was generated or marked unavailable.";
+  if (workflowId === "evolution.propose") return "Evolution proposal workflow completed through Trading Pi Agent. A guarded proposal artifact and approval gate were created.";
   if (workflowId === "os.bootstrap") return "Trading Pi OS bootstrap completed. Workspace, MCP, Marketplace, and bootstrap artifact records were created.";
   if (text.includes("approvalId")) return "Workflow is waiting for explicit approval.";
   return "Workflow completed through Trading Pi Agent.";

@@ -10,6 +10,9 @@
   "references": [
     { "path": "../browser-layer" },
     { "path": "../journal" },
+    { "path": "../mcp-hub" },
+    { "path": "../memory-engine" },
+    { "path": "../research-hub" },
     { "path": "../search-hub" },
     { "path": "../strategy-engine" }
   ]

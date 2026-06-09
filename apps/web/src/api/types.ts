@@ -8,6 +8,9 @@ export type Status = {
   langfuseConfigured: boolean;
   skills: number;
   workflows: number;
+  mcpServers?: number;
+  memoryDomains?: Row[];
+  browserSessions?: number;
 };
 
 export type TimelineEvent = {

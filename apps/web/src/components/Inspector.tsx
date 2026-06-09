@@ -9,6 +9,8 @@ export function Inspector() {
   const approvals = useQuery({ queryKey: ["approvals"], queryFn: tradingPiApi.approvals });
   const skills = useQuery({ queryKey: ["skills"], queryFn: tradingPiApi.skills });
   const status = useQuery({ queryKey: ["status"], queryFn: tradingPiApi.status });
+  const mcp = useQuery({ queryKey: ["mcp"], queryFn: tradingPiApi.mcpServers });
+  const browser = useQuery({ queryKey: ["browser-health"], queryFn: tradingPiApi.browserHealth });
 
   return (
     <aside className="inspectorRail">
@@ -50,9 +52,12 @@ export function Inspector() {
         <Card.Header className="panelTitle"><Boxes size={16} /> Runtime</Card.Header>
         <div className="runtimeGrid">
           <span>MCP</span><strong>registry</strong>
-          <span>Sandbox</span><strong>{status.data?.env.integrations?.aioSandboxConfigured ? "AIO" : "local/off"}</strong>
-          <span>Memory</span><strong>SQLite</strong>
+          <span>MCP Count</span><strong>{mcp.data?.length ?? status.data?.mcpServers ?? 0}</strong>
+          <span>Sandbox</span><strong>{browser.data?.configured ? "AIO configured" : "AIO unavailable"}</strong>
+          <span>Browser Runs</span><strong>{status.data?.browserSessions ?? 0}</strong>
+          <span>Memory</span><strong>{status.data?.memoryDomains?.length ?? 0} domains</strong>
           <span>AI</span><strong>{status.data?.env.openai.configured ? "ready" : "missing"}</strong>
+          <span>Permissions</span><strong>explicit</strong>
           <span>Mode</span><strong>{status.data?.env.local.tradingMode ?? "paper"}</strong>
           <span>Workflows</span><strong><Workflow size={12} /> {status.data?.workflows ?? 0}</strong>
         </div>

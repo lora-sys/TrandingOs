@@ -12,6 +12,9 @@ export function WorkspacePage() {
   const { sessionId, setSessionId } = useSession();
   const queryClient = useQueryClient();
   const workspaces = useQuery({ queryKey: ["workspaces"], queryFn: tradingPiApi.workspaces });
+  const activeWorkspaceId = String(workspaces.data?.[0]?.id ?? "workspace_eth");
+  const memory = useQuery({ queryKey: ["workspace-memory", activeWorkspaceId], queryFn: () => tradingPiApi.workspaceMemory(activeWorkspaceId), enabled: Boolean(activeWorkspaceId) });
+  const artifacts = useQuery({ queryKey: ["workspace-artifacts", activeWorkspaceId], queryFn: () => tradingPiApi.workspaceArtifacts(activeWorkspaceId), enabled: Boolean(activeWorkspaceId) });
   const mutation = useMutation({
     mutationFn: (value: { name: string; kind: string; symbol: string }) =>
       tradingPiApi.createWorkspace({ name: value.name, kind: value.kind, context: { symbol: value.symbol } }, sessionId),
@@ -45,6 +48,8 @@ export function WorkspacePage() {
         </form>
       </Card>
       <section className="tableSection"><h2>Workspace Records</h2><DataTable data={workspaces.data ?? []} /></section>
+      <section className="tableSection"><h2>Active Workspace Memory</h2><DataTable data={memory.data ?? []} /></section>
+      <section className="tableSection"><h2>Linked Artifacts</h2><DataTable data={(artifacts.data ?? []).map((artifact) => ({ id: artifact.id, type: artifact.type, title: artifact.title, summary: artifact.summary, created_at: artifact.created_at }))} /></section>
     </section>
   );
 }

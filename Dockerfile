@@ -8,7 +8,14 @@ WORKDIR /app
 COPY package.json package-lock.json* tsconfig.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY packages/browser-layer/package.json packages/browser-layer/package.json
 COPY packages/core/package.json packages/core/package.json
+COPY packages/journal/package.json packages/journal/package.json
+COPY packages/mcp-hub/package.json packages/mcp-hub/package.json
+COPY packages/memory-engine/package.json packages/memory-engine/package.json
+COPY packages/research-hub/package.json packages/research-hub/package.json
+COPY packages/search-hub/package.json packages/search-hub/package.json
+COPY packages/strategy-engine/package.json packages/strategy-engine/package.json
 
 RUN npm install --ignore-scripts
 

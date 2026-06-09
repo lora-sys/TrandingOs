@@ -108,7 +108,9 @@ export function ChatWorkspace() {
         <div className="commandHints">
           <Chip size="sm" variant="flat" color="primary">/research ETH</Chip>
           <Chip size="sm" variant="flat" color="success">/plan ETH/USDT 100 spot</Chip>
+          <Chip size="sm" variant="flat" color="secondary">/browser search ETH risks</Chip>
           <Chip size="sm" variant="flat" color="warning">/review-day</Chip>
+          <Chip size="sm" variant="flat" color="danger">/evolve</Chip>
         </div>
       </div>
 

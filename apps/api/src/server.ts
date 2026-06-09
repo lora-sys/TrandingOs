@@ -43,6 +43,9 @@ async function route(req: IncomingMessage, res: ServerResponse) {
         langfuseConfigured: runtime.telemetry.configured,
         skills: runtime.skills.list().length,
         workflows: runtime.workflows.list().length,
+        mcpServers: runtime.repos.list("mcp_servers").length,
+        memoryDomains: runtime.repos.db.prepare("SELECT DISTINCT COALESCE(domain, scope) AS domain FROM memory_records LIMIT 20").all(),
+        browserSessions: runtime.repos.list("browser_sessions").length,
       });
     }
     if (url.pathname === "/api/ai/ping" && req.method === "POST") {
@@ -93,6 +96,14 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       runtime.memory.upsert(body.scope ?? "user", body.key, body.value);
       return sendJson(res, { ok: true });
     }
+    if (url.pathname === "/api/memory/query" && req.method === "POST") {
+      const body = await readBody(req);
+      return sendJson(res, { output: runtime.memory.query(body.input ?? body) });
+    }
+    if (url.pathname === "/api/memory/write" && req.method === "POST") {
+      const body = await readBody(req);
+      return sendJson(res, { output: runtime.memory.write(body.input ?? body) });
+    }
     if (url.pathname === "/api/session/message" && req.method === "POST") {
       const body = await readBody(req);
       const result = await runtime.agent.prompt({ message: body.message, sessionId: body.sessionId });
@@ -128,7 +139,67 @@ async function route(req: IncomingMessage, res: ServerResponse) {
       const session = runtime.sessions.ensureSession(body.sessionId);
       return sendJson(res, { sessionId: session.id, ...(await runApiSkill("workspace.create", body.input ?? body, session.id)) });
     }
+    const workspaceContextMatch = url.pathname.match(/^\/api\/workspaces\/([^/]+)\/context$/);
+    if (workspaceContextMatch && req.method === "GET") {
+      return sendJson(res, runtime.repos.workspaceContext(decodeURIComponent(workspaceContextMatch[1] ?? "")));
+    }
+    const workspaceMemoryMatch = url.pathname.match(/^\/api\/workspaces\/([^/]+)\/memory$/);
+    if (workspaceMemoryMatch && req.method === "GET") {
+      return sendJson(res, runtime.memory.query({ workspaceId: decodeURIComponent(workspaceMemoryMatch[1] ?? ""), limit: 100 }));
+    }
+    const workspaceArtifactsMatch = url.pathname.match(/^\/api\/workspaces\/([^/]+)\/artifacts$/);
+    if (workspaceArtifactsMatch && req.method === "GET") {
+      const workspaceId = decodeURIComponent(workspaceArtifactsMatch[1] ?? "");
+      return sendJson(
+        res,
+        runtime.repos.db
+          .prepare("SELECT artifacts.* FROM workspace_links JOIN artifacts ON artifacts.id = workspace_links.ref_id WHERE workspace_links.workspace_id = ? AND workspace_links.kind = 'artifact' ORDER BY workspace_links.created_at DESC")
+          .all(workspaceId),
+      );
+    }
+    const workspaceWorkflowsMatch = url.pathname.match(/^\/api\/workspaces\/([^/]+)\/workflows$/);
+    if (workspaceWorkflowsMatch && req.method === "GET") {
+      const workspaceId = decodeURIComponent(workspaceWorkflowsMatch[1] ?? "");
+      return sendJson(
+        res,
+        runtime.repos.db
+          .prepare("SELECT * FROM workspace_links WHERE workspace_id = ? AND kind = 'workflow' ORDER BY created_at DESC LIMIT 100")
+          .all(workspaceId),
+      );
+    }
+    if (url.pathname === "/api/mcp/discover" && req.method === "GET") {
+      const session = runtime.sessions.ensureSession(url.searchParams.get("sessionId") ?? undefined);
+      return sendJson(res, { sessionId: session.id, ...(await runApiSkill("mcp.discover", { query: url.searchParams.get("q") ?? "" }, session.id)) });
+    }
     if (url.pathname === "/api/mcp/servers" && req.method === "GET") return sendJson(res, runtime.repos.list("mcp_servers"));
+    if (url.pathname === "/api/mcp/servers" && req.method === "POST") {
+      const body = await readBody(req);
+      const session = runtime.sessions.ensureSession(body.sessionId);
+      return sendJson(res, { sessionId: session.id, ...(await runApiSkill("mcp.register", body.input ?? body, session.id)) });
+    }
+    const mcpServerMatch = url.pathname.match(/^\/api\/mcp\/servers\/([^/]+)$/);
+    if (mcpServerMatch && req.method === "PATCH") {
+      const body = await readBody(req);
+      runtime.repos.updateMcpServer({ id: decodeURIComponent(mcpServerMatch[1] ?? ""), ...(body.input ?? body) });
+      return sendJson(res, { ok: true });
+    }
+    const mcpServerHealthMatch = url.pathname.match(/^\/api\/mcp\/servers\/([^/]+)\/health$/);
+    if (mcpServerHealthMatch && req.method === "POST") {
+      const body = await readBody(req);
+      const session = runtime.sessions.ensureSession(body.sessionId);
+      const id = decodeURIComponent(mcpServerHealthMatch[1] ?? "");
+      const row = runtime.repos.db.prepare("SELECT * FROM mcp_servers WHERE id = ?").get(id) as any;
+      return sendJson(res, { sessionId: session.id, ...(await runApiSkill("mcp.health", { id, name: row?.name ?? id, url: row?.url ?? undefined }, session.id)) });
+    }
+    const mcpApprovalMatch = url.pathname.match(/^\/api\/mcp\/servers\/([^/]+)\/approval$/);
+    if (mcpApprovalMatch && req.method === "POST") {
+      const body = await readBody(req);
+      const session = runtime.sessions.ensureSession(body.sessionId);
+      return sendJson(res, {
+        sessionId: session.id,
+        ...(await runApiSkill("mcp.permission.request", { serverId: decodeURIComponent(mcpApprovalMatch[1] ?? ""), ...(body.input ?? body) }, session.id)),
+      });
+    }
     if (url.pathname === "/api/mcp/health" && req.method === "POST") {
       const body = await readBody(req);
       const session = runtime.sessions.ensureSession(body.sessionId);
@@ -142,6 +213,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     }
     if (url.pathname === "/api/strategies" && req.method === "GET") return sendJson(res, runtime.repos.list("strategies"));
     if (url.pathname === "/api/backtests" && req.method === "GET") return sendJson(res, runtime.repos.list("backtests"));
+    if (url.pathname === "/api/evolution/proposals" && req.method === "GET") return sendJson(res, runtime.repos.list("evolution_proposals"));
     if (url.pathname === "/api/audit" && req.method === "GET") return sendJson(res, runtime.repos.list("audit_records"));
     if (url.pathname === "/api/cache" && req.method === "GET") return sendJson(res, runtime.repos.list("data_cache"));
     if (url.pathname === "/api/search/query" && req.method === "POST") {
@@ -154,6 +226,31 @@ async function route(req: IncomingMessage, res: ServerResponse) {
         provider: "aio-sandbox",
         configured: Boolean(runtime.env.aioSandboxBaseUrl),
         baseUrl: runtime.env.aioSandboxBaseUrl ?? null,
+        capabilities: ["browser.search", "browser.open", "browser.extract", "browser.screenshot", "browser.pdf"],
+      });
+    }
+    if (url.pathname === "/api/browser/actions" && req.method === "POST") {
+      const body = await readBody(req);
+      const session = runtime.sessions.ensureSession(body.sessionId);
+      return sendJson(res, { sessionId: session.id, ...(await runApiSkill("browser.action", body.input ?? body, session.id)) });
+    }
+    const browserSessionMatch = url.pathname.match(/^\/api\/browser\/sessions\/([^/]+)$/);
+    if (browserSessionMatch && req.method === "GET") {
+      const sessionId = decodeURIComponent(browserSessionMatch[1] ?? "");
+      const row = runtime.repos.db.prepare("SELECT * FROM browser_sessions WHERE id = ?").get(sessionId);
+      if (!row) return sendJson(res, { error: "Browser session not found" }, 404);
+      return sendJson(res, row);
+    }
+    const browserArtifactMatch = url.pathname.match(/^\/api\/browser\/artifacts\/([^/]+)$/);
+    if (browserArtifactMatch && req.method === "GET") {
+      const artifactId = decodeURIComponent(browserArtifactMatch[1] ?? "");
+      const artifact = runtime.repos.getArtifact(artifactId);
+      if (!artifact) return sendJson(res, { error: "Browser artifact not found" }, 404);
+      return sendJson(res, {
+        ...artifact,
+        payload: JSON.parse(artifact.payload_json),
+        content: artifact.content ?? readFileSync(artifact.path, "utf8"),
+        previewPayload: artifact.preview_payload_json ? JSON.parse(artifact.preview_payload_json) : null,
       });
     }
     const workflowMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/run$/);
