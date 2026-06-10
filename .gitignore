@@ -12,3 +12,5 @@ apps/web/vite.config.d.ts
 output/playwright/
 .playwright-cli/
 npm-debug.log*
+.claude
+.atomcode

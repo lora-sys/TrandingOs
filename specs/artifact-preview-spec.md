@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Artifact Preview Panel SPEC v1
 
 版本：v4.1 增量功能补充
@@ -61,3 +62,77 @@
 - Sandbox 渲染正确返回数据
 - Agent 调用 Preview 不直接访问真实系统
 - 所有操作生成日志和执行记录
+=======
+# artifact-preview-spec.md
+
+# Artifact Preview Spec v4.1
+
+## 1. Purpose
+
+Artifacts are first-class outputs.
+
+Users must be able to preview outputs like Claude Artifacts.
+
+## 2. Supported Artifact Types
+
+- trade_plan
+- research_report
+- market_report
+- risk_report
+- review_report
+- backtest_report
+- evolution_proposal
+- skill_proposal
+- airdrop_guide
+- browser_snapshot
+
+## 3. Supported Preview Types
+
+- markdown
+- html
+- pdf
+- screenshot
+- json
+- table
+- chart
+
+## 4. Artifact Schema
+
+```ts
+type Artifact = {
+  id: string
+  workspaceId: string
+  runId: string
+  type: string
+  title: string
+  contentType: "markdown" | "html" | "pdf" | "json" | "image"
+  content: string | object
+  previewReady: boolean
+  evidence: EvidenceItem[]
+  createdAt: string
+}
+```
+
+## 5. Preview Panel Features
+
+- tabs
+- full screen
+- copy
+- export markdown
+- export PDF
+- view source
+- view evidence
+- view execution log
+
+## 6. Browser Rendering
+
+HTML/web previews must be rendered through AIO Sandbox.
+
+Required skills:
+
+- browser.render_html
+- browser.screenshot
+- browser.pdf
+
+Do not render untrusted HTML directly without sandboxing.
+>>>>>>> 8882e21 (update docs)
