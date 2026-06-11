@@ -1,0 +1,54 @@
+---
+name: daily-dev-state-review
+description: >
+  Daily check of development state — find blocked tasks, failed E2E, idle branches. Summarize for user.
+  Use when: "daily dev review", "check dev state", "status check", "any blocked tasks".
+  Triggers: scheduled daily, user asks for status, after long idle period.
+---
+
+# Daily Dev State Review
+
+Check all development state files. Summarize status, blockers, and suggested next actions.
+
+## Workflow
+
+1. Read `.codex/state/global.state.yaml` → know current phase and active tasks.
+2. Read `.codex/state/development.state.yaml` → check each task's status.
+3. Read `.codex/state/verification.state.yaml` → check validator results.
+4. For each task:
+   - If status is `blocked` → summarize blockers
+   - If status is `fixing` with `fix_count >= 2` → flag for user attention
+   - If status is `in_progress` but no state change in 24h → suggest next action
+   - If status is `completed` → verify handoff state is correct
+5. Generate summary report.
+
+## Report Format
+
+```markdown
+# Daily Development Review — {date}
+
+## Active Tasks
+| Task | Status | Step | Blockers |
+|------|--------|------|----------|
+| auth-login-v1 | in_progress | playwright_e2e | none |
+| dashboard-chart-v2 | blocked | fix | E2E test fails after 3 attempts |
+
+## Verification Failures
+- `dashboard-chart-v2`: E2E `test/chart-render.spec.ts` — chart not rendering on mobile viewport
+
+## Blocked Tasks Requiring User Action
+1. **dashboard-chart-v2** — E2E failure after 3 fix attempts. Suggestion: reduce scope or adjust acceptance criteria.
+
+## Idle Tasks (>24h no change)
+- none
+
+## Suggestions
+- Complete auth-login-v1 E2E and handoff
+- Decide on dashboard-chart-v2: fix or defer
+```
+
+## Rules
+
+- Report is read-only — does NOT modify any state.
+- If everything is green, report "All tasks on track."
+- If no development state files exist, report "No active development tasks."

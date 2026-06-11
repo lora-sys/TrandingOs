@@ -5,7 +5,11 @@
     "jsx": "react-jsx",
     "rootDir": ".",
     "outDir": "dist-types",
-    "tsBuildInfoFile": "dist-types/.tsbuildinfo"
+    "tsBuildInfoFile": "dist-types/.tsbuildinfo",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
 }

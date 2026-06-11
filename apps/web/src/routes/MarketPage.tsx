@@ -29,7 +29,7 @@ export function MarketPage() {
         <button disabled={mutation.isPending}><Play size={16} /> Snapshot</button>
       </form>
       <section className="artifactGrid">
-        {(artifacts.data ?? []).filter((artifact) => artifact.type === "market-snapshot").slice(0, 6).map((artifact) => (
+        {(artifacts.data ?? []).filter((artifact: any) => artifact.type === "market-snapshot").slice(0, 6).map((artifact: any) => (
           <article className="artifactCard" key={artifact.id}><LineChart size={18} /><div><strong>{artifact.title}</strong><p>{artifact.summary}</p><small>{artifact.created_at}</small></div></article>
         ))}
       </section>

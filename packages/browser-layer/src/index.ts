@@ -1,99 +1,284 @@
-export interface BrowserLayerConfig {
-  aioSandboxBaseUrl?: string;
-}
+import { AioSandboxAdapter } from "./aio-sandbox.js";
+import type { BrowserAction, BrowserLayerActionResult, BrowserLayerConfig } from "./types.js";
 
-export type BrowserAction = "browser.search" | "browser.open" | "browser.extract" | "browser.screenshot" | "browser.pdf";
-
-export interface BrowserLayerActionResult {
-  status: "completed" | "unavailable" | "failed";
-  action: BrowserAction;
-  sessionId: string;
-  payload: unknown;
-  provider: "aio-sandbox";
-  observedAt: string;
-  contentType?: string;
-  content?: string;
-  artifactKind?: "markdown" | "html" | "png" | "pdf";
-  url?: string;
-  reason?: string;
-  raw?: unknown;
-}
+export type { BrowserAction, BrowserLayerActionResult, BrowserLayerConfig };
 
 export class AioSandboxBrowserLayer {
-  constructor(private readonly config: BrowserLayerConfig = {}) {}
+  private readonly sandboxAdapter: AioSandboxAdapter | null;
+
+  constructor(private readonly config: BrowserLayerConfig = {}) {
+    this.sandboxAdapter = this.resolveBaseUrl()
+      ? new AioSandboxAdapter(this.resolveBaseUrl()!)
+      : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
 
   health() {
+    const baseUrl = this.resolveBaseUrl();
     return {
-      configured: Boolean(this.config.aioSandboxBaseUrl),
-      baseUrl: this.config.aioSandboxBaseUrl ?? null,
-      provider: "aio-sandbox",
-      capabilities: ["browser.search", "browser.open", "browser.extract", "browser.screenshot", "browser.pdf"],
+      configured: Boolean(baseUrl),
+      baseUrl: baseUrl ?? null,
+      provider: baseUrl ? ("aio-sandbox" as const) : ("playwright" as const),
+      capabilities: [
+        "browser.search",
+        "browser.open",
+        "browser.extract",
+        "browser.screenshot",
+        "browser.pdf",
+      ] as BrowserAction[],
     };
   }
 
-  async search(query: string) {
+  search(query: string): Promise<BrowserLayerActionResult> {
     return this.call("browser.search", { query });
   }
 
-  async open(url: string) {
+  open(url: string): Promise<BrowserLayerActionResult> {
     return this.call("browser.open", { url });
   }
 
-  async extract(url: string) {
+  extract(url: string): Promise<BrowserLayerActionResult> {
     return this.call("browser.extract", { url });
   }
 
-  async screenshot(url: string) {
+  screenshot(url: string): Promise<BrowserLayerActionResult> {
     return this.call("browser.screenshot", { url });
   }
 
-  async pdf(url: string) {
+  pdf(url: string): Promise<BrowserLayerActionResult> {
     return this.call("browser.pdf", { url });
   }
 
-  async action(action: BrowserAction, payload: unknown) {
+  action(action: BrowserAction, payload: unknown): Promise<BrowserLayerActionResult> {
     return this.call(action, payload);
   }
 
-  private async call(action: BrowserAction, payload: unknown): Promise<BrowserLayerActionResult> {
-    const sessionId = `aio_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    if (!this.config.aioSandboxBaseUrl) {
-      return {
-        status: "unavailable",
-        action,
-        payload,
-        provider: "aio-sandbox",
-        sessionId,
-        observedAt: new Date().toISOString(),
-        reason: "AIO Sandbox is not configured.",
-      };
+  // ---------------------------------------------------------------------------
+  // Internal routing
+  // ---------------------------------------------------------------------------
+
+  private resolveBaseUrl(): string | null {
+    const raw =
+      this.config.aioSandboxBaseUrl ?? process.env.AIO_SANDBOX_BASE_URL ?? null;
+    return raw ? raw.replace(/\/+$/, "") : null;
+  }
+
+  private extractUrl(payload: unknown): string | undefined {
+    if (typeof payload === "object" && payload !== null && "url" in payload) {
+      const v = (payload as Record<string, unknown>).url;
+      return typeof v === "string" ? v : undefined;
     }
-    const response = await fetch(`${this.config.aioSandboxBaseUrl.replace(/\/$/, "")}/api/actions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, payload, sessionId }),
-    });
-    if (!response.ok) throw new Error(`AIO Sandbox ${action} failed: ${response.status} ${await response.text()}`);
-    const raw = await response.json();
+    return undefined;
+  }
+
+  private makeResult(
+    status: "completed" | "unavailable" | "failed",
+    action: BrowserAction,
+    sessionId: string,
+    payload: unknown,
+    provider: "aio-sandbox" | "playwright",
+    overrides?: Partial<BrowserLayerActionResult>,
+  ): BrowserLayerActionResult {
     return {
-      status: "completed",
+      status,
       action,
+      sessionId,
       payload,
-      provider: "aio-sandbox",
-      sessionId: raw.sessionId ?? sessionId,
+      provider,
       observedAt: new Date().toISOString(),
-      contentType: raw.contentType,
-      content: raw.content,
-      artifactKind: inferArtifactKind(action, raw.contentType),
-      url: typeof payload === "object" && payload && "url" in payload ? String((payload as { url?: unknown }).url ?? "") : undefined,
-      raw,
+      ...overrides,
     };
   }
-}
 
-function inferArtifactKind(action: BrowserAction, contentType?: string): BrowserLayerActionResult["artifactKind"] {
-  if (action === "browser.screenshot") return "png";
-  if (action === "browser.pdf") return "pdf";
-  if (contentType?.includes("html")) return "html";
-  return "markdown";
+  private async call(
+    action: BrowserAction,
+    payload: unknown,
+  ): Promise<BrowserLayerActionResult> {
+    const sessionId = `br_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const url = this.extractUrl(payload);
+
+    // ---- AIO Sandbox path ---------------------------------------------------
+    if (this.sandboxAdapter) {
+      try {
+        return await this.callAioSandbox(action, payload, sessionId, url);
+      } catch (err) {
+        return this.makeResult("failed", action, sessionId, payload, "aio-sandbox", {
+          url,
+          reason: err instanceof Error ? err.message : String(err),
+          raw: err,
+        });
+      }
+    }
+
+    // ---- Local Playwright fallback -------------------------------------------
+    try {
+      return await this.callLocalPlaywright(action, payload, sessionId, url);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return this.makeResult("unavailable", action, sessionId, payload, "playwright", {
+        url,
+        reason: `Playwright not available: ${reason}`,
+        raw: err,
+      });
+    }
+  }
+
+  private async callAioSandbox(
+    action: BrowserAction,
+    payload: unknown,
+    sessionId: string,
+    url: string | undefined,
+  ): Promise<BrowserLayerActionResult> {
+    const adapter = this.sandboxAdapter!;
+
+    switch (action) {
+      case "browser.search": {
+        const q = (payload as Record<string, unknown>).query;
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(String(q ?? ""))}`;
+        await adapter.navigate(searchUrl);
+        return this.makeResult("completed", action, sessionId, payload, "aio-sandbox", {
+          url: searchUrl,
+          raw: { navigated: true },
+        });
+      }
+
+      case "browser.open": {
+        if (!url) throw new Error("URL is required for browser.open");
+        await adapter.navigate(url);
+        return this.makeResult("completed", action, sessionId, payload, "aio-sandbox", {
+          url,
+          raw: { navigated: true },
+        });
+      }
+
+      case "browser.extract": {
+        if (!url) throw new Error("URL is required for browser.extract");
+        const { content, metadata } = await adapter.extract(url);
+        return this.makeResult("completed", action, sessionId, payload, "aio-sandbox", {
+          url,
+          contentType: "text/plain",
+          content,
+          artifactKind: "markdown",
+          raw: metadata,
+        });
+      }
+
+      case "browser.screenshot": {
+        if (!url) throw new Error("URL is required for browser.screenshot");
+        const { content, metadata } = await adapter.screenshot(url);
+        return this.makeResult("completed", action, sessionId, payload, "aio-sandbox", {
+          url,
+          contentType: "image/png",
+          content,
+          artifactKind: "png",
+          raw: metadata,
+        });
+      }
+
+      case "browser.pdf": {
+        if (!url) throw new Error("URL is required for browser.pdf");
+        const { content, metadata } = await adapter.pdf(url);
+        return this.makeResult("completed", action, sessionId, payload, "aio-sandbox", {
+          url,
+          contentType: "application/pdf",
+          content,
+          artifactKind: "pdf",
+          raw: metadata,
+        });
+      }
+    }
+  }
+
+  private async callLocalPlaywright(
+    action: BrowserAction,
+    payload: unknown,
+    sessionId: string,
+    url: string | undefined,
+  ): Promise<BrowserLayerActionResult> {
+    const { chromium } = await (import("playwright") as Promise<
+      typeof import("playwright")
+    >);
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+
+      switch (action) {
+        case "browser.search": {
+          const q = (payload as Record<string, unknown>).query;
+          const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(String(q ?? ""))}`;
+          await page.goto(searchUrl, { waitUntil: "networkidle" });
+          const bodyText = await page.evaluate(() => document.body?.innerText ?? "");
+          return this.makeResult("completed", action, sessionId, payload, "playwright", {
+            url: searchUrl,
+            contentType: "text/plain",
+            content: bodyText,
+            artifactKind: "markdown",
+          });
+        }
+
+        case "browser.open": {
+          if (!url) throw new Error("URL is required for browser.open");
+          await page.goto(url, { waitUntil: "networkidle" });
+          const title = await page.title();
+          const content = await page.evaluate(() => document.body?.innerText ?? "");
+          return this.makeResult("completed", action, sessionId, payload, "playwright", {
+            url,
+            contentType: "text/plain",
+            content,
+            artifactKind: "markdown",
+            raw: { title },
+          });
+        }
+
+        case "browser.extract": {
+          if (!url) throw new Error("URL is required for browser.extract");
+          await page.goto(url, { waitUntil: "networkidle" });
+          const title = await page.title();
+          const extracted = await page.evaluate(() => document.body?.innerText ?? "");
+          return this.makeResult("completed", action, sessionId, payload, "playwright", {
+            url,
+            contentType: "text/plain",
+            content: extracted,
+            artifactKind: "markdown",
+            raw: { title },
+          });
+        }
+
+        case "browser.screenshot": {
+          if (!url) throw new Error("URL is required for browser.screenshot");
+          await page.goto(url, { waitUntil: "networkidle" });
+          const screenshotBuf = await page.screenshot({ type: "png" });
+          const buf = Buffer.isBuffer(screenshotBuf)
+            ? screenshotBuf
+            : Buffer.from(screenshotBuf);
+          return this.makeResult("completed", action, sessionId, payload, "playwright", {
+            url,
+            contentType: "image/png",
+            content: buf.toString("base64"),
+            artifactKind: "png",
+          });
+        }
+
+        case "browser.pdf": {
+          if (!url) throw new Error("URL is required for browser.pdf");
+          await page.goto(url, { waitUntil: "networkidle" });
+          const pdfResult = await page.pdf({ format: "A4" });
+          const pdfBuf = Buffer.isBuffer(pdfResult)
+            ? pdfResult
+            : Buffer.from(pdfResult);
+          return this.makeResult("completed", action, sessionId, payload, "playwright", {
+            url,
+            contentType: "application/pdf",
+            content: pdfBuf.toString("base64"),
+            artifactKind: "pdf",
+          });
+        }
+      }
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  }
 }

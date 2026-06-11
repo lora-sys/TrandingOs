@@ -9,7 +9,6 @@
     { "path": "./packages/research-hub" },
     { "path": "./packages/search-hub" },
     { "path": "./packages/strategy-engine" },
-    { "path": "./apps/api" },
     { "path": "./apps/web" }
   ]
 }

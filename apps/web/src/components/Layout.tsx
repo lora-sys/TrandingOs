@@ -51,7 +51,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="sideStatus">
             <StatusLine icon={<Database size={14} />} label="SQLite" value="local" />
             <StatusLine icon={<Activity size={14} />} label="Langfuse" value={status.data?.langfuseConfigured ? "on" : "off"} />
-            <StatusLine icon={<Shield size={14} />} label="Sandbox" value={status.data?.env.integrations?.aioSandboxConfigured ? "aio" : "off"} />
+            <StatusLine icon={<Shield size={14} />} label="Sandbox" value={status.data?.env?.aioSandboxBaseUrl ? "aio" : "off"} />
             <StatusLine icon={<Boxes size={14} />} label="MCP" value={String(status.data?.mcpServers ?? 0)} />
           </div>
         </aside>

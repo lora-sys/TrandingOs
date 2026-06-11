@@ -2,7 +2,6 @@ import { Button } from "@heroui/react/button";
 import { Card } from "@heroui/react/card";
 import { Chip } from "@heroui/react/chip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "@tanstack/react-form";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AlertTriangle, Bot, FileText, Send, Sparkles, User, Workflow } from "lucide-react";
 import { useRef, useState } from "react";
@@ -19,15 +18,13 @@ type FeedItem =
 export function ChatWorkspace() {
   const queryClient = useQueryClient();
   const { sessionId, setSessionId } = useSession();
-  const [localItems, setLocalItems] = useState<FeedItem[]>([]);
-  const messages = useQuery({ queryKey: ["messages", sessionId], queryFn: () => tradingPiApi.messages(sessionId) });
-  const artifacts = useQuery({ queryKey: ["artifacts"], queryFn: tradingPiApi.artifacts });
+  const messages = (useQuery as any)({ queryKey: ["messages", sessionId], queryFn: () => tradingPiApi.messages(sessionId ?? ""), enabled: Boolean(sessionId) });
+  const artifacts = (useQuery as any)({ queryKey: ["artifacts"], queryFn: tradingPiApi.artifacts });
   const parentRef = useRef<HTMLDivElement | null>(null);
 
   const feed: FeedItem[] = [
-    ...(messages.data?.messages ?? []).map((message) => ({ id: message.id, kind: "message" as const, message })),
-    ...localItems,
-    ...(artifacts.data ?? []).slice(0, 6).map((artifact) => ({ id: artifact.id, kind: "artifact" as const, artifact })),
+    ...(messages.data?.messages ?? []).map((message: any) => ({ id: message.id, kind: "message" as const, message })),
+    ...(artifacts.data ?? []).slice(0, 6).map((artifact: any) => ({ id: artifact.id, kind: "artifact" as const, artifact })),
   ];
 
   const virtualizer = useVirtualizer({
@@ -52,51 +49,21 @@ export function ChatWorkspace() {
     mutationFn: async (prompt: string) => tradingPiApi.sendMessage(prompt, sessionId),
     onSuccess: async (result) => {
       if (result.sessionId) setSessionId(result.sessionId);
-      if (result.workflowResult) {
-        setLocalItems((items) => [
-          ...items,
-          { id: `wf_${Date.now()}`, kind: "workflow", title: "Trading Pi Agent workflow completed", result: result.workflowResult! },
-        ]);
-      } else {
-        setLocalItems((items) => [
-          ...items,
-          {
-            id: `assistant_${Date.now()}`,
-            kind: "message",
-            message: {
-              id: `local_assistant_${Date.now()}`,
-              role: "assistant",
-              kind: "message",
-              content: result.text,
-              timestamp: new Date().toISOString(),
-              raw: result,
-            },
-          },
-        ]);
-      }
       await refresh();
     },
     onError: (error) => {
-      setLocalItems((items) => [
-        ...items,
-        { id: `err_${Date.now()}`, kind: "notice", title: "Execution failed", detail: error instanceof Error ? error.message : String(error) },
-      ]);
+      console.error("Mutation failed:", error);
     },
   });
 
-  const form = useForm({
-    defaultValues: { prompt: "/research ETH" },
-    onSubmit: async ({ value }) => {
-      const prompt = value.prompt.trim();
-      if (!prompt) return;
-      setLocalItems((items) => [
-        ...items,
-        { id: `user_${Date.now()}`, kind: "message", message: { id: `local_${Date.now()}`, role: "user", kind: "message", content: prompt, timestamp: new Date().toISOString(), raw: null } },
-      ]);
-      form.setFieldValue("prompt", "");
-      await mutation.mutateAsync(prompt);
-    },
-  });
+  const [prompt, setPrompt] = useState("");
+
+  const handleSubmit = async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed) return;
+    setPrompt("");
+    await mutation.mutateAsync(trimmed);
+  };
 
   return (
     <section className="chatWorkspace">
@@ -138,26 +105,22 @@ export function ChatWorkspace() {
           className="composer"
           onSubmit={(event) => {
             event.preventDefault();
-            void form.handleSubmit();
+            void handleSubmit();
           }}
         >
-          <form.Field name="prompt">
-            {(field) => (
-              <textarea
-                aria-label="Trading Pi composer"
-                value={field.state.value}
-                onChange={(event) => field.handleChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void form.handleSubmit();
-                  }
-                }}
-                placeholder="Ask Trading Pi or run /research, /plan, /review-day..."
-                rows={1}
-              />
-            )}
-          </form.Field>
+          <textarea
+            aria-label="Trading Pi composer"
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void handleSubmit();
+              }
+            }}
+            placeholder="Ask Trading Pi or run /research, /plan, /review-day..."
+            rows={1}
+          />
           <Button type="submit" variant="primary" isDisabled={mutation.isPending} title="Send">
             <Send size={18} />
           </Button>

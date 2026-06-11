@@ -14,3 +14,4 @@ output/playwright/
 npm-debug.log*
 .claude
 .atomcode
+output

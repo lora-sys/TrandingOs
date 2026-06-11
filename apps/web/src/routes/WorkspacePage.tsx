@@ -49,7 +49,7 @@ export function WorkspacePage() {
       </Card>
       <section className="tableSection"><h2>Workspace Records</h2><DataTable data={workspaces.data ?? []} /></section>
       <section className="tableSection"><h2>Active Workspace Memory</h2><DataTable data={memory.data ?? []} /></section>
-      <section className="tableSection"><h2>Linked Artifacts</h2><DataTable data={(artifacts.data ?? []).map((artifact) => ({ id: artifact.id, type: artifact.type, title: artifact.title, summary: artifact.summary, created_at: artifact.created_at }))} /></section>
+      <section className="tableSection"><h2>Linked Artifacts</h2><DataTable data={(artifacts.data ?? []).map((artifact: any) => ({ id: artifact.id, type: artifact.type, title: artifact.title, summary: artifact.summary, created_at: artifact.created_at }))} /></section>
     </section>
   );
 }

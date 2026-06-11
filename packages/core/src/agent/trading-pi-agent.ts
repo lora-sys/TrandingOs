@@ -1,4 +1,12 @@
-import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
+import {
+  Agent,
+  type AgentEvent,
+  type AgentMessage,
+  DEFAULT_COMPACTION_SETTINGS,
+  estimateContextTokens,
+  generateSummary,
+  shouldCompact,
+} from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createTradingPiModel } from "../ai/model.js";
 import type { TradingPiEnv } from "../config/env.js";
@@ -11,6 +19,8 @@ import type { ArtifactEngine } from "../artifacts/artifact-engine.js";
 import type { WorkflowEngine } from "../workflows/workflow-engine.js";
 
 export class TradingPiAgent {
+  private _compactionSummary: string | undefined;
+
   constructor(
     private readonly deps: {
       env: TradingPiEnv;
@@ -24,8 +34,10 @@ export class TradingPiAgent {
     },
   ) {}
 
-  async prompt(input: { message: string; sessionId?: string }) {
-    const session = this.deps.sessions.ensureSession(input.sessionId);
+  async prompt(input: { message: string; sessionId?: string; parentSessionId?: string }) {
+    const session = input.parentSessionId
+      ? this.deps.sessions.createFork(input.parentSessionId)
+      : this.deps.sessions.ensureSession(input.sessionId);
     this.deps.sessions.append(session.id, "message", { role: "user", content: input.message });
     const baseContext = {
       env: this.deps.env,
@@ -40,23 +52,50 @@ export class TradingPiAgent {
     if (routed) {
       return routed;
     }
+    const agentSystemPrompt = this.systemPrompt();
+    const agentTools = this.deps.skills.toPiTools(baseContext);
     const agent = new Agent({
       sessionId: session.id,
       toolExecution: "sequential",
       initialState: {
-        systemPrompt: this.systemPrompt(),
+        systemPrompt: agentSystemPrompt,
         model: createTradingPiModel(this.deps.env),
-        tools: this.deps.skills.toPiTools(baseContext),
+        tools: agentTools,
       },
       getApiKey: () => this.deps.env.openaiApiKey,
-      transformContext: async (messages) => [
-        {
+      transformContext: async (messages) => {
+        const contextMessages: AgentMessage[] = [];
+        if (this._compactionSummary) {
+          contextMessages.push({
+            role: "user",
+            content: `--- Previous conversation summary ---\n${this._compactionSummary}`,
+            timestamp: Date.now(),
+          });
+          this._compactionSummary = undefined;
+        }
+        contextMessages.push({
           role: "user",
           content: `Local memory snapshot:\n${this.deps.memory.contextBlock("user")}`,
           timestamp: Date.now(),
-        },
-        ...messages,
-      ],
+        });
+        return [...contextMessages, ...messages];
+      },
+      prepareNextTurn: async () => {
+        const memoryContext = this.deps.memory.contextBlock("user");
+        return {
+          context: {
+            systemPrompt: agentSystemPrompt,
+            messages: [
+              {
+                role: "user",
+                content: `--- Context refresh ---\nSession: ${session.id}\nMemory:\n${memoryContext}`,
+                timestamp: Date.now(),
+              },
+            ],
+          },
+          model: createTradingPiModel(this.deps.env),
+        };
+      },
       beforeToolCall: async ({ toolCall, args }) => {
         const skill = this.deps.skills.get(toolCall.name);
         this.deps.repos.createTimeline({
@@ -89,8 +128,44 @@ export class TradingPiAgent {
         return undefined;
       },
     });
-    agent.subscribe((event) => this.handleEvent(session.id, event));
+    agent.subscribe((event: AgentEvent) => this.handleEvent(session.id, event));
     await agent.prompt(input.message);
+
+    // Auto-compaction: check if context needs compaction and generate summary
+    const messageCount = agent.state.messages.length;
+    if (messageCount > 50) {
+      try {
+        const usage = estimateContextTokens(agent.state.messages);
+        if (shouldCompact(usage.tokens, 128_000, DEFAULT_COMPACTION_SETTINGS)) {
+          this.deps.repos.createTimeline({
+            sessionId: session.id,
+            type: "agent.compaction.check",
+            title: `Auto-compaction triggered (${messageCount} messages, ~${usage.tokens} tokens)`,
+            status: "running",
+            payload: { messageCount, tokens: usage.tokens },
+          });
+          const summaryResult = await generateSummary(
+            agent.state.messages,
+            agent.state.model,
+            DEFAULT_COMPACTION_SETTINGS.reserveTokens,
+            this.deps.env.openaiApiKey ?? "",
+          );
+          if (summaryResult.ok) {
+            this._compactionSummary = summaryResult.value;
+            this.deps.repos.createTimeline({
+              sessionId: session.id,
+              type: "agent.compaction.complete",
+              title: "Auto-compaction completed",
+              status: "completed",
+              payload: { summaryLength: summaryResult.value.length },
+            });
+          }
+        }
+      } catch {
+        // Compaction is best-effort; do not fail the prompt
+      }
+    }
+
     const messages = agent.state.messages;
     this.deps.sessions.append(session.id, "agent_state", { messageCount: messages.length });
     const last = messages.at(-1);

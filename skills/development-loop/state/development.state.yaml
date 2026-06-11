@@ -1,0 +1,24 @@
+phase: development
+status: idle
+
+task:
+  id: null
+  goal: null
+  branch: null
+  spec: null
+
+current_step: null
+
+completed_steps: []
+pending_steps:
+  - plan
+  - branch
+  - implement
+  - pre_validation
+  - playwright_e2e
+  - review
+  - handoff
+
+blockers: []
+created_at: null
+completed_at: null

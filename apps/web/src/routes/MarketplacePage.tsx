@@ -41,7 +41,7 @@ export function MarketplacePage() {
     onSubmit: async ({ value }) => register.mutateAsync(value),
   });
   const seed = useMutation({
-    mutationFn: () => tradingPiApi.seedMarketplace(sessionId),
+    mutationFn: () => tradingPiApi.seedMarketplace(sessionId ?? ""),
     onSuccess: async (result) => {
       setSessionId(result.sessionId);
       await queryClient.invalidateQueries();
@@ -75,7 +75,7 @@ export function MarketplacePage() {
       <section className="tableSection">
         <h2>MCP Registry</h2>
         <div className="inlineActions">
-          {(mcp.data ?? []).slice(0, 4).map((server) => (
+          {(mcp.data ?? []).slice(0, 4).map((server: any) => (
             <Button key={String(server.id)} size="sm" variant="secondary" isDisabled={health.isPending} onClick={() => health.mutate(String(server.id))}>
               Health {String(server.name ?? server.id)}
             </Button>

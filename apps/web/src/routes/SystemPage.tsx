@@ -12,7 +12,7 @@ export function SystemPage() {
   const cache = useQuery({ queryKey: ["cache"], queryFn: tradingPiApi.cache });
   const mcp = useQuery({ queryKey: ["mcp"], queryFn: tradingPiApi.mcpServers });
   const browser = useQuery({ queryKey: ["browser-health"], queryFn: tradingPiApi.browserHealth });
-  const memory = useQuery({ queryKey: ["memory-system"], queryFn: () => tradingPiApi.memoryQuery({ limit: 25 }) });
+  const memory = useQuery({ queryKey: ["memory-system"], queryFn: () => tradingPiApi.queryMemory({ limit: 25 }) });
 
   return (
     <section className="pageStack">

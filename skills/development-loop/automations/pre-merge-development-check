@@ -1,0 +1,57 @@
+---
+name: pre-merge-development-check
+description: >
+  Gate before merging — run full development verification chain (pre-validator → E2E → code-reviewer).
+  Use when: "pre-merge check", "before merge", "verify before merging", "merge gate".
+  Triggers: user requests merge, PR ready, before creating merge commit.
+---
+
+# Pre-Merge Development Check
+
+Run the verification chain from the development loop before allowing any merge.
+
+## Workflow
+
+1. Read `.codex/state/development.state.yaml` → know current task and branch.
+2. Run `pre-validator`:
+   - lint
+   - typecheck
+   - unit tests
+3. If pre-validator fails → run `fix-runner`, re-run until pass or blocked.
+4. Run `playwright-e2e-tester`:
+   - All acceptance criteria tested in browser
+5. If E2E fails → run `fix-runner`, re-run until pass or blocked.
+6. Run `code-reviewer`:
+   - Spec compliance
+   - Architecture
+   - Security
+   - Test coverage
+7. If review returns `needs_changes` → return to dev-implementer.
+8. If review returns `blocked` → block merge, ask user.
+9. If all passed → mark `merge_ready: true` in state.
+
+## State Update
+
+```yaml
+phase: development
+status: merge_ready
+task:
+  id: "{task-id}"
+  merge_ready: true
+  merge_ready_at: "{ISO timestamp}"
+current_step: pre_merge_check
+completed_steps:
+  - plan
+  - branch
+  - implement
+  - pre_validation
+  - playwright_e2e
+  - review
+blockers: []
+```
+
+## Hard Rules
+
+- No merge without full verification chain passing.
+- If any step fails, do NOT bypass — fix or ask user.
+- This automation does NOT push or create PRs — only gates.

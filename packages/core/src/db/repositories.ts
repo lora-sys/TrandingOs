@@ -97,6 +97,15 @@ export class Repositories {
     return eventId;
   }
 
+  createSessionFork(id: string, parentId: string, title: string) {
+    const createdAt = nowIso();
+    const path = `fork:${parentId}`;
+    this.db
+      .prepare("INSERT INTO sessions (id, name, path, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?, 'active')")
+      .run(id, title, path, createdAt, createdAt);
+    return { id, name: title, path, createdAt, parentId };
+  }
+
   createWorkflowRun(workflowId: string, input: unknown, sessionId?: string) {
     const runId = id("wfr");
     this.db.prepare(`
@@ -343,6 +352,10 @@ export class Repositories {
       payload: { orderId, tradeId, mode: "paper", quantity: input.quantity, price: input.price },
     });
     return { orderId, tradeId, mode: "paper", status: "filled" };
+  }
+
+  updateApprovalStatus(id: string, status: string) {
+    this.db.prepare("UPDATE approvals SET status = ?, decided_at = ? WHERE id = ?").run(status, nowIso(), id);
   }
 
   createAuditRecord(input: { category: string; action: string; status: string; actor?: string; payload?: unknown }) {

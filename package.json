@@ -11,14 +11,11 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @trading-pi/api\" \"npm run dev -w @trading-pi/web\"",
-    "dev:api": "npm run dev -w @trading-pi/api",
+    "dev": "concurrently \"npm run server -w @trading-pi/web\" \"npm run dev -w @trading-pi/web\"",
     "dev:web": "npm run dev -w @trading-pi/web",
     "build": "npm run build -ws",
     "check": "tsc -b",
-    "test": "vitest run",
-    "start": "npm run start -w @trading-pi/api",
-    "db:migrate": "npm run db:migrate -w @trading-pi/api"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "24.12.4",
@@ -33,5 +30,16 @@
   "overrides": {
     "react": "19.2.7",
     "react-dom": "19.2.7"
+  },
+  "dependencies": {
+    "@tanstack/react-start": "^1.168.25",
+    "clsx": "^2.1.1",
+    "lightweight-charts": "^5.2.0",
+    "recharts": "^3.8.1",
+    "socks-proxy-agent": "^10.1.0",
+    "tailwind-merge": "^3.6.0",
+    "tailwind-variants": "^3.2.2",
+    "vinxi": "^0.5.11",
+    "ws": "^8.21.0"
   }
 }

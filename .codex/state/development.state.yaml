@@ -1,0 +1,17 @@
+phase: development
+status: planning
+task:
+  id: "mvp-chat-ui"
+  goal: "Migrate ChatWorkspace to ai-elements, matching concept design"
+  spec: ".codex/tasks/mvp-chat-ui/current-task-spec.md"
+current_step: plan
+completed_steps: []
+pending_steps:
+  - plan
+  - branch
+  - implement
+  - pre_validation
+  - playwright_e2e
+  - review
+  - handoff
+blockers: []
