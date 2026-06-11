@@ -1,4 +1,4 @@
-import { Button } from "@heroui/react/button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@heroui/react/card";
 import { Chip } from "@heroui/react/chip";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -35,7 +35,7 @@ export function BeginnerJourneyPage() {
           <h1>Beginner Journey</h1>
           <p>From learning to paper execution, review, and guarded evolution.</p>
         </div>
-        <Chip variant="solid" color="success">paper-first</Chip>
+        <Chip variant="primary" color="success">paper-first</Chip>
       </header>
       <Card className="heroPanel">
         <Card.Header className="panelTitle"><GraduationCap size={16} /> Trading Pi Growth Route</Card.Header>
@@ -44,7 +44,7 @@ export function BeginnerJourneyPage() {
             <div className="journeyStep" key={step.title}>
               <strong>{index + 1}. {step.title}</strong>
               <span>{step.note}</span>
-              <Button size="sm" variant="secondary" isDisabled={run.isPending} onClick={() => run.mutate(step.command)}>
+              <Button size="sm" variant="secondary" disabled={run.isPending} onClick={() => run.mutate(step.command)}>
                 {index < 2 ? <BookOpen size={14} /> : index < 4 ? <ClipboardList size={14} /> : <ShieldCheck size={14} />} {step.command}
               </Button>
             </div>

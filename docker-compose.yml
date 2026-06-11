@@ -8,10 +8,22 @@ services:
     environment:
       TRADING_PI_DATA_DIR: /data
       TRADING_PI_API_PORT: 8787
+      AIO_SANDBOX_BASE_URL: http://aio-sandbox:8080
     ports:
       - "8787:8787"
     volumes:
       - trading-pi-data:/data
+    depends_on:
+      - aio-sandbox
+
+  aio-sandbox:
+    image: ghcr.io/agent-infra/sandbox:latest
+    container_name: trading-pi-sandbox
+    ports:
+      - "8080:8080"
+    security_opt:
+      - seccomp=unconfined
+    restart: unless-stopped
 
 volumes:
   trading-pi-data:

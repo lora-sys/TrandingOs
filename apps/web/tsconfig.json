@@ -5,7 +5,13 @@
     "jsx": "react-jsx",
     "rootDir": ".",
     "outDir": "dist-types",
-    "tsBuildInfoFile": "dist-types/.tsbuildinfo"
+    "tsBuildInfoFile": "dist-types/.tsbuildinfo",
+    "baseUrl": ".",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
 }

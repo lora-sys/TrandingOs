@@ -1,0 +1,27 @@
+phase: verification
+status: idle
+task_id: null
+
+validators:
+  lint:
+    required: true
+    status: pending
+  typecheck:
+    required: true
+    status: pending
+  unit:
+    required: true
+    status: pending
+  integration:
+    required: false
+    status: skipped
+  e2e:
+    required: true
+    tool: playwright
+    status: pending
+
+artifacts:
+  pre_validation_log: null
+  e2e_report: null
+
+completed_at: null

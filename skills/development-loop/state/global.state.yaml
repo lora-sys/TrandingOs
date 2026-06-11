@@ -1,0 +1,19 @@
+current_phase: idle
+current_task: null
+task_status: null
+next_agent: null
+next_phase_state: null
+
+# Cross-loop relay
+# Layers: alignment → development → evolution
+# Each loop reads the previous loop's state to know what's done.
+
+last_alignment:
+  score: null
+  approved: false
+  frozen_at: null
+
+last_development:
+  completed_at: null
+  branch: null
+  merge_ready: false

@@ -1,0 +1,18 @@
+task_id: "mvp-chat-ui"
+drift_score: 20
+drift_level: minor
+violations:
+  - type: Validator Drift
+    standard: "typecheck must pass (required: true)"
+    evidence: "verification.state.yaml status: partial — 21 pre-existing type errors not fixed"
+    severity: low
+  - type: Spec Drift
+    standard: "Must match concept design in images/frtontend.png"
+    evidence: "User reports layout/design doesn't match — unconstrained layout, no mono font, no streaming"
+    severity: medium
+  - type: User Preference Drift
+    standard: "Acceptance criteria should reflect user's actual expectations"
+    evidence: "User expects streaming animation, mono font, proper content separation, Artifact component usage — none specified in task spec criteria"
+    severity: low
+next_entry: development
+reason: "Score 20 (minor). No standards violations or architecture issues. Fixes are UI-specific: type errors, layout constraints, streaming animation, mono font, Artifact usage. All within scope of a focused development iteration."

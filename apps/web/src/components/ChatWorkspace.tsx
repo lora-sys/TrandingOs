@@ -1,232 +1,615 @@
-import { Button } from "@heroui/react/button";
-import { Card } from "@heroui/react/card";
-import { Chip } from "@heroui/react/chip";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "@tanstack/react-form";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertTriangle, Bot, FileText, Send, Sparkles, User, Workflow } from "lucide-react";
-import { useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bot, ClipboardCopy, FileText, Eye, Download } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { tradingPiApi } from "../api/client.js";
-import type { Artifact, ChatMessage, WorkflowResult } from "../api/types.js";
+import type { Artifact, ChatMessage, TimelineEvent, Approval } from "../api/types.js";
 import { useSession } from "./session.js";
 
-type FeedItem =
-  | { id: string; kind: "message"; message: ChatMessage }
-  | { id: string; kind: "artifact"; artifact: Artifact }
-  | { id: string; kind: "workflow"; title: string; result: WorkflowResult }
-  | { id: string; kind: "notice"; title: string; detail: string };
+/* ─── ai-elements Conversation ─── */
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation.js";
+
+/* ─── ai-elements Message ─── */
+import {
+  Message,
+  MessageContent,
+  MessageActions,
+  MessageAction,
+  MessageResponse,
+} from "@/components/ai-elements/message.js";
+
+/* ─── ai-elements Tool ─── */
+import {
+  Tool,
+  ToolHeader,
+  ToolContent,
+  ToolInput,
+  ToolOutput,
+} from "@/components/ai-elements/tool.js";
+
+/* ─── ai-elements Sources ─── */
+import {
+  Sources,
+  SourcesTrigger,
+  SourcesContent,
+  Source,
+} from "@/components/ai-elements/sources.js";
+
+/* ─── ai-elements Confirmation ─── */
+import {
+  Confirmation,
+  ConfirmationTitle,
+  ConfirmationRequest,
+  ConfirmationAccepted,
+  ConfirmationActions,
+  ConfirmationAction,
+} from "@/components/ai-elements/confirmation.js";
+
+/* ─── ai-elements Artifact ─── */
+import {
+  Artifact as ArtifactRoot,
+  ArtifactHeader,
+  ArtifactTitle,
+  ArtifactDescription,
+  ArtifactActions as ArtifactActionsRow,
+  ArtifactAction,
+  ArtifactContent,
+} from "@/components/ai-elements/artifact.js";
+
+/* ─── ai-elements PromptInput ─── */
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputSubmit,
+} from "@/components/ai-elements/prompt-input.js";
+
+/* ════════════════════════════════════════════════════
+   Types & Helpers
+   ════════════════════════════════════════════════════ */
+
+type RichTimeline = TimelineEvent & { payload: unknown };
+type ToolFrame = { call: RichTimeline; result?: RichTimeline | null };
+interface GroupedMsg {
+  msg: ChatMessage;
+  tools: ToolFrame[];
+}
+
+/** Pair consecutive tool events into (call, result) frames. */
+function pairTools(events: RichTimeline[]): ToolFrame[] {
+  const out: ToolFrame[] = [];
+  let i = 0;
+  while (i < events.length) {
+    const cur = events[i]!;
+    if (cur.status === "completed" || cur.type === "agent.tool.result") {
+      out.push({ call: cur, result: cur });
+      i++;
+    } else if (
+      i + 1 < events.length &&
+      events[i + 1]!.status === "completed"
+    ) {
+      out.push({ call: cur, result: events[i + 1]! });
+      i += 2;
+    } else {
+      out.push({ call: cur });
+      i++;
+    }
+  }
+  return out;
+}
+
+/** Group tool events under their parent assistant message. */
+function groupTools(
+  msgs: ChatMessage[],
+  timeline: RichTimeline[],
+): GroupedMsg[] {
+  const toolEvts = timeline.filter(
+    (e) =>
+      e.type?.startsWith("agent.tool.") ||
+      e.type?.startsWith("pi."),
+  );
+  const groups: GroupedMsg[] = [];
+  let ti = 0;
+
+  for (const msg of msgs) {
+    const buf: RichTimeline[] = [];
+    if (msg.role === "assistant" || msg.kind === "pi_message") {
+      while (ti < toolEvts.length) {
+        buf.push(toolEvts[ti]!);
+        ti++;
+        if (toolEvts[ti - 1]!.type === "agent.tool.result") break;
+      }
+    }
+    groups.push({ msg, tools: pairTools(buf) });
+  }
+  return groups;
+}
+
+/** Extract source-like events from timeline (type =~ /source|url|web/) */
+function extractSources(timeline: RichTimeline[]): { title: string; url: string }[] {
+  return timeline
+    .filter((e) => /source|web_fetch|url/i.test(e.type) && e.payload)
+    .map((e) => {
+      const p = typeof e.payload === "object" && e.payload ? (e.payload as Record<string, unknown>) : {};
+      return { title: String(p.title ?? e.title ?? ""), url: String(p.url ?? "") };
+    })
+    .filter((s) => s.url.startsWith("http"));
+}
+
+/** Pick the most recent approval record that matches an "approval.request" event. */
+function findApprovalRequest(
+  timeline: RichTimeline[],
+  approvals: Approval[],
+): { approval: Approval; event: RichTimeline } | null {
+  const ev = timeline.findLast((e) => e.type === "approval.request" || e.type?.startsWith("pi.approval."));
+  if (!ev) return null;
+  const app = approvals.find((a) => ev.id?.includes(a.id) || a.id?.includes(ev.id));
+  return app ? { approval: app, event: ev } : null;
+}
+
+/* ════════════════════════════════════════════════════
+   Main Component
+   ════════════════════════════════════════════════════ */
 
 export function ChatWorkspace() {
   const queryClient = useQueryClient();
   const { sessionId, setSessionId } = useSession();
-  const [localItems, setLocalItems] = useState<FeedItem[]>([]);
-  const messages = useQuery({ queryKey: ["messages", sessionId], queryFn: () => tradingPiApi.messages(sessionId) });
-  const artifacts = useQuery({ queryKey: ["artifacts"], queryFn: tradingPiApi.artifacts });
-  const parentRef = useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = useState<"idle" | "submitted" | "streaming" | "error">("idle");
+  const [streamingText, setStreamingText] = useState<string>("");
+  const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const feed: FeedItem[] = [
-    ...(messages.data?.messages ?? []).map((message) => ({ id: message.id, kind: "message" as const, message })),
-    ...localItems,
-    ...(artifacts.data ?? []).slice(0, 6).map((artifact) => ({ id: artifact.id, kind: "artifact" as const, artifact })),
-  ];
-
-  const virtualizer = useVirtualizer({
-    count: feed.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 116,
-    overscan: 8,
+  /* ─── Data ─── */
+  const { data: msgsData } = (useQuery as any)({
+    queryKey: ["messages", sessionId],
+    queryFn: () => tradingPiApi.messages(sessionId ?? ""),
+    enabled: Boolean(sessionId),
+  });
+  const { data: rawArtifacts } = (useQuery as any)({
+    queryKey: ["artifacts"],
+    queryFn: tradingPiApi.artifacts,
+  });
+  const { data: rawTimeline } = (useQuery as any)({
+    queryKey: ["timeline"],
+    queryFn: tradingPiApi.timeline,
+  });
+  const { data: rawApprovals } = (useQuery as any)({
+    queryKey: ["approvals"],
+    queryFn: tradingPiApi.approvals,
   });
 
-  const refresh = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["messages"] }),
-      queryClient.invalidateQueries({ queryKey: ["timeline"] }),
-      queryClient.invalidateQueries({ queryKey: ["artifacts"] }),
-      queryClient.invalidateQueries({ queryKey: ["portfolio"] }),
-      queryClient.invalidateQueries({ queryKey: ["journal"] }),
-      queryClient.invalidateQueries({ queryKey: ["reviews"] }),
-    ]);
+  const allMessages: ChatMessage[] = msgsData?.messages ?? [];
+  const allArtifacts: Artifact[] = rawArtifacts ?? [];
+  const allTimeline: RichTimeline[] = rawTimeline ?? [];
+  const allApprovals: Approval[] = rawApprovals ?? [];
+
+  /* ─── streaming index tracking ─── */
+
+  /* ─── grouped data ─── */
+  const grouped = useMemo(() => groupTools(allMessages, allTimeline), [allMessages, allTimeline]);
+  const sources = useMemo(() => extractSources(allTimeline), [allTimeline]);
+  const approvalRequest = useMemo(() => findApprovalRequest(allTimeline, allApprovals), [allTimeline, allApprovals]);
+
+  /* ─── SSE streaming logic ─── */
+  const sseRef = useRef<EventTarget | null>(null);
+
+  const handleSubmit = async (message: { text: string }) => {
+    const trimmed = message.text.trim();
+    if (!trimmed) return;
+
+    // Cancel any previous SSE
+    sseRef.current = null;
+    setStatus("submitted");
+    setStreamingText("");
+    setErrorMessage(null);
+
+    // Generate a temp ID for the streaming message
+    const tempId = `stream-${Date.now()}`;
+    setStreamingMsgId(tempId);
+
+    // Start SSE connection
+    const sse = tradingPiApi.sendMessageStream(trimmed, sessionId ?? undefined);
+    sseRef.current = sse;
+
+    sse.addEventListener("message_update", ((e: CustomEvent) => {
+      const { text } = e.detail;
+      if (text) {
+        setStreamingText(text);
+        setStatus("streaming");
+      }
+    }) as EventListener);
+
+    sse.addEventListener("tool_execution_start", ((e: CustomEvent) => {
+      const { toolName, args } = e.detail;
+      // Timeline event will be picked up by polling
+    }) as EventListener);
+
+    sse.addEventListener("done", ((e: CustomEvent) => {
+      const result = e.detail;
+      setStreamingMsgId(null);
+      setStreamingText("");
+      setStatus("idle");
+      if (result.sessionId) setSessionId(result.sessionId);
+      // Refresh all data from DB (includes timeline, artifacts)
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["messages"] }),
+        queryClient.invalidateQueries({ queryKey: ["timeline"] }),
+        queryClient.invalidateQueries({ queryKey: ["artifacts"] }),
+      ]);
+    }) as EventListener);
+
+    sse.addEventListener("agent_end", (() => {
+      setStreamingMsgId(null);
+      setStreamingText("");
+      setStatus("idle");
+    }) as EventListener);
+
+    sse.addEventListener("error", ((e: CustomEvent) => {
+      setStatus("error");
+      setStreamingMsgId(null);
+      setStreamingText("");
+      setErrorMessage(e.detail?.message || e.detail?.error || "Connection failed");
+    }) as EventListener);
   };
 
-  const mutation = useMutation({
-    mutationFn: async (prompt: string) => tradingPiApi.sendMessage(prompt, sessionId),
-    onSuccess: async (result) => {
-      if (result.sessionId) setSessionId(result.sessionId);
-      if (result.workflowResult) {
-        setLocalItems((items) => [
-          ...items,
-          { id: `wf_${Date.now()}`, kind: "workflow", title: "Trading Pi Agent workflow completed", result: result.workflowResult! },
-        ]);
-      } else {
-        setLocalItems((items) => [
-          ...items,
-          {
-            id: `assistant_${Date.now()}`,
-            kind: "message",
-            message: {
-              id: `local_assistant_${Date.now()}`,
-              role: "assistant",
-              kind: "message",
-              content: result.text,
-              timestamp: new Date().toISOString(),
-              raw: result,
-            },
-          },
-        ]);
-      }
-      await refresh();
-    },
-    onError: (error) => {
-      setLocalItems((items) => [
-        ...items,
-        { id: `err_${Date.now()}`, kind: "notice", title: "Execution failed", detail: error instanceof Error ? error.message : String(error) },
-      ]);
-    },
-  });
+  /* Cleanup SSE on unmount */
+  useEffect(() => {
+    return () => { sseRef.current = null; };
+  }, []);
 
-  const form = useForm({
-    defaultValues: { prompt: "/research ETH" },
-    onSubmit: async ({ value }) => {
-      const prompt = value.prompt.trim();
-      if (!prompt) return;
-      setLocalItems((items) => [
-        ...items,
-        { id: `user_${Date.now()}`, kind: "message", message: { id: `local_${Date.now()}`, role: "user", kind: "message", content: prompt, timestamp: new Date().toISOString(), raw: null } },
-      ]);
-      form.setFieldValue("prompt", "");
-      await mutation.mutateAsync(prompt);
-    },
-  });
+  const copyContent = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch { /* noop */ }
+  }, []);
+
+  /* ════════════════════════════════════════════════════
+     Render
+     ════════════════════════════════════════════════════ */
 
   return (
-    <section className="chatWorkspace">
-      <div className="chatHeader">
+    <section className="chatContainer">
+      {/* ────────── HEADER ────────── */}
+      <header className="chatHeader">
         <div>
-          <h1>Trading Pi Agent</h1>
+          <h1>
+            Trading Pi Agent
+            <span className={`statusBadge ${status === "idle" ? "idle" : status === "streaming" || status === "submitted" ? "streaming" : "error"}`}>
+              ● {status === "idle" ? "READY" : status === "streaming" ? "RUNNING" : status === "submitted" ? "SUBMITTED" : "ERROR"}
+            </span>
+          </h1>
           <p>One core agent, Workflow + Skills, local artifacts, approval-first execution.</p>
         </div>
         <div className="commandHints">
-          <Chip size="sm" variant="flat" color="primary">/research ETH</Chip>
-          <Chip size="sm" variant="flat" color="success">/plan ETH/USDT 100 spot</Chip>
-          <Chip size="sm" variant="flat" color="secondary">/browser search ETH risks</Chip>
-          <Chip size="sm" variant="flat" color="warning">/review-day</Chip>
-          <Chip size="sm" variant="flat" color="danger">/evolve</Chip>
+          {["/research ETH", "/plan ETH/USDT 100", "/review-day"].map((cmd) => (
+            <span key={cmd} className="commandHint">{cmd}</span>
+          ))}
         </div>
-      </div>
+      </header>
 
-      <Card className="messageViewport heroPanel" ref={parentRef}>
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const item = feed[virtualRow.index];
-            if (!item) return null;
+      {/* ────────── CONVERSATION ────────── */}
+      <div className="conversationArea">
+      <Conversation>
+        <ConversationContent>
+          {grouped.map(({ msg, tools }) => {
+            const isAssistant = msg.role === "assistant";
+            // The streaming message is identified by its temp ID match or before SSE done
+            const isStreaming =
+              isAssistant &&
+              streamingMsgId !== null &&
+              status !== "idle" &&
+              ((msg.id === streamingMsgId) ||
+               (msg.id.startsWith("stream-")));
+
+            if (!isAssistant) {
+              /* ─ user message ─ */
+              return (
+                <Message key={msg.id} from="user">
+                  <MessageContent>
+                    <p
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                        fontFamily: '"Inter", system-ui, sans-serif',
+                        fontSize: "14px",
+                        lineHeight: "1.6",
+                        color: "#e5edf6",
+                      }}
+                    >
+                      {msg.content}
+                    </p>
+                  </MessageContent>
+                </Message>
+              );
+            }
+
+            /* ─ assistant message ─ */
             return (
-              <div
-                key={item.id}
-                className="virtualRow"
-                style={{ transform: `translateY(${virtualRow.start}px)` }}
-              >
-                <FeedCard item={item} />
-              </div>
+              <Message key={msg.id} from="assistant">
+                <MessageContent>
+                  {/* AI response — mono font + streaming */}
+                  <div
+                    style={{
+                      fontFamily: '"JetBrains Mono", "Noto Sans SC", ui-monospace, monospace',
+                      fontSize: "14px",
+                      lineHeight: "1.7",
+                      color: "#e5edf6",
+                    }}
+                  >
+                    <MessageResponse isAnimating={isStreaming}>
+                      {msg.content}
+                    </MessageResponse>
+                  </div>
+
+                  {/* Tool calls inline */}
+                  {tools.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "6px",
+                      }}
+                    >
+                      {tools.map((pair, i) => (
+                        <ToolItem key={pair.call.id ?? `t${i}`} pair={pair} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Message actions (hover) */}
+                  <MessageActions>
+                    <MessageAction
+                      tooltip="Copy response"
+                      onClick={() => copyContent(msg.content)}
+                    >
+                      <ClipboardCopy size={14} />
+                    </MessageAction>
+                  </MessageActions>
+                </MessageContent>
+              </Message>
             );
           })}
-        </div>
-        {!feed.length && <div className="emptyState"><Bot size={28} /> Start with a slash command or ask Trading Pi directly.</div>}
-      </Card>
 
-      <Card className="composerCard heroPanel">
-        <form
-          className="composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void form.handleSubmit();
-          }}
-        >
-          <form.Field name="prompt">
-            {(field) => (
-              <textarea
-                aria-label="Trading Pi composer"
-                value={field.state.value}
-                onChange={(event) => field.handleChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void form.handleSubmit();
-                  }
+          {/* ── Synthetic streaming message (not yet in DB) ── */}
+          {streamingMsgId && streamingText && status !== "idle" && (
+            <Message key={streamingMsgId} from="assistant">
+              <MessageContent>
+                <div
+                  style={{
+                    fontFamily: '"JetBrains Mono", "Noto Sans SC", ui-monospace, monospace',
+                    fontSize: "14px",
+                    lineHeight: "1.7",
+                    color: "#e5edf6",
+                  }}
+                >
+                  <MessageResponse isAnimating>
+                    {streamingText}
+                  </MessageResponse>
+                </div>
+              </MessageContent>
+            </Message>
+          )}
+
+          {/* ── Approval Request ── */}
+          {approvalRequest && (
+            <Confirmation
+              state={
+                approvalRequest.approval.status === "approved"
+                  ? "approval-responded"
+                  : approvalRequest.approval.status === "rejected"
+                    ? "output-denied"
+                    : "approval-requested"
+              }
+            >
+              <ConfirmationTitle>
+                {approvalRequest.approval.action} —{" "}
+                {approvalRequest.approval.reason}
+              </ConfirmationTitle>
+
+              <ConfirmationRequest>
+                <ConfirmationActions>
+                  <ConfirmationAction
+                    variant="default"
+                    onClick={() => {
+                      /* TODO: implement approve API */
+                    }}
+                  >
+                    Approve
+                  </ConfirmationAction>
+                  <ConfirmationAction
+                    variant="outline"
+                    onClick={() => {
+                      /* TODO: implement reject API */
+                    }}
+                  >
+                    Reject
+                  </ConfirmationAction>
+                </ConfirmationActions>
+              </ConfirmationRequest>
+
+              <ConfirmationAccepted>
+                <p style={{ color: "#22c55e", fontSize: "13px" }}>
+                  ✓ Approved
+                </p>
+              </ConfirmationAccepted>
+            </Confirmation>
+          )}
+
+          {/* ── Sources (from timeline data) ── */}
+          {sources.length > 0 && (
+            <Sources>
+              <SourcesTrigger count={sources.length} />
+              <SourcesContent>
+                {sources.map((src, i) => (
+                  <Source
+                    key={i}
+                    href={src.url}
+                    title={src.title || src.url}
+                  />
+                ))}
+              </SourcesContent>
+            </Sources>
+          )}
+
+          {/* ── Artifacts (proper Artifact component) ── */}
+          {allArtifacts.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+                marginTop: "8px",
+              }}
+            >
+              <p
+                style={{
+                  color: "#8da1b6",
+                  fontSize: "11px",
+                  fontFamily: '"JetBrains Mono", monospace',
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
                 }}
-                placeholder="Ask Trading Pi or run /research, /plan, /review-day..."
-                rows={1}
-              />
-            )}
-          </form.Field>
-          <Button type="submit" variant="primary" isDisabled={mutation.isPending} title="Send">
-            <Send size={18} />
-          </Button>
-        </form>
-      </Card>
+              >
+                Artifacts
+              </p>
+              {allArtifacts.slice(0, 4).map((art) => (
+                <ArtifactCard key={art.id} artifact={art} />
+              ))}
+            </div>
+          )}
+        </ConversationContent>
+
+        {grouped.length === 0 && (
+          <ConversationEmptyState
+            title="Start your trading session"
+            description="Ask Trading Pi or run /research, /plan, /review-day..."
+            icon={<Bot size={28} />}
+          />
+        )}
+
+        <ConversationScrollButton />
+      </Conversation>
+      </div>
+
+      {/* ────────── INPUT ────────── */}
+      <div className="chatInput">
+        <PromptInput onSubmit={handleSubmit}>
+          <PromptInputBody>
+            <PromptInputTextarea placeholder="Ask Trading Pi or run /research, /plan, /review-day..." />
+          </PromptInputBody>
+          <PromptInputFooter>
+            <div />
+            <PromptInputSubmit
+              status={
+                status === "submitted"
+                  ? "submitted"
+                  : status === "error"
+                    ? "error"
+                    : undefined
+              }
+            />
+          </PromptInputFooter>
+        </PromptInput>
+      </div>
     </section>
   );
 }
 
-function FeedCard({ item }: { item: FeedItem }) {
-  if (item.kind === "message") {
-    const Icon = item.message.role === "user" ? User : Bot;
-    return (
-      <Card className={`feedCard messageBubble ${item.message.role}`}>
-        <Card.Header className="feedCardHeader">
-          <Icon size={16} />
-          <Chip size="sm" variant="flat" color={item.message.role === "user" ? "primary" : "success"}>{item.message.role}</Chip>
-        </Card.Header>
-        <Card.Content className="feedCardBody">
-          <p>{item.message.content || item.message.kind}</p>
-        </Card.Content>
-      </Card>
-    );
-  }
-  if (item.kind === "artifact") {
-    return (
-      <Card className="feedCard artifactCard">
-        <Card.Header className="feedCardHeader">
-          <FileText size={18} />
-          <strong>{item.artifact.title}</strong>
-          <Chip size="sm" variant="flat" color="success">{item.artifact.type}</Chip>
-        </Card.Header>
-        <Card.Content className="feedCardBody">
-          <p>{item.artifact.summary}</p>
-        </Card.Content>
-      </Card>
-    );
-  }
-  if (item.kind === "workflow") {
-    return (
-      <Card className="feedCard skillRunCard">
-        <Card.Header className="feedCardHeader">
-          <Workflow size={18} />
-          <strong>{item.title}</strong>
-          <Chip size="sm" variant="flat" color="primary">workflow</Chip>
-        </Card.Header>
-        <Card.Content className="feedCardBody">
-          <p>{artifactSummary(item.result.output)}</p>
-        </Card.Content>
-      </Card>
-    );
-  }
+/* ════════════════════════════════════════════════════
+   Sub-components
+   ════════════════════════════════════════════════════ */
+
+/* ─── Tool Item ─── */
+function ToolItem({ pair }: { pair: ToolFrame }) {
+  const typeClean = pair.call.type
+    .replace(/^agent\.tool\./, "")
+    .replace(/^pi\./, "");
+  const done = Boolean(pair.result);
+  const state: "output-available" | "input-available" | "output-error" = done
+    ? pair.result!.status === "failed"
+      ? "output-error"
+      : "output-available"
+    : "input-available";
+
   return (
-    <Card className="feedCard approvalCard">
-      <Card.Header className="feedCardHeader">
-        <AlertTriangle size={18} />
-        <strong>{item.title}</strong>
-        <Chip size="sm" variant="flat" color="warning">approval</Chip>
-      </Card.Header>
-      <Card.Content className="feedCardBody">
-        <p>{item.detail}</p>
-      </Card.Content>
-    </Card>
+    <Tool defaultOpen={!done}>
+      <ToolHeader title={pair.call.title} type={"tool-call" as const} state={state} />
+      <ToolContent>
+        {pair.call.payload && <ToolInput input={pair.call.payload as any} />}
+        {done && (
+          <ToolOutput
+            output={pair.result!.payload as any}
+            errorText={pair.result!.status === "failed" ? pair.result!.title : undefined}
+          />
+        )}
+        {!done && pair.call.status === "running" && (
+          <div className="toolRunning">
+            Running {typeClean}…
+          </div>
+        )}
+      </ToolContent>
+    </Tool>
   );
 }
 
-function artifactSummary(output: unknown) {
-  const text = JSON.stringify(output);
-  if (text.includes("approvalId")) return "Approval card created. Check the Risk panel.";
-  if (text.includes("artifact")) return "Artifacts created. Cards are visible in the feed and Artifact panel.";
-  return "Workflow completed through Trading Pi skills.";
+/* ─── ArtifactCard using ai-elements Artifact ─── */
+function ArtifactCard({ artifact }: { artifact: Artifact }) {
+  return (
+    <ArtifactRoot
+      style={{
+        border: "1px solid #305842",
+        background: "rgba(15, 29, 24, 0.85)",
+        borderRadius: "10px",
+      }}
+    >
+      <ArtifactHeader>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <FileText size={16} style={{ color: "#22c55e", opacity: 0.8 }} />
+          <div>
+            <ArtifactTitle>{artifact.title}</ArtifactTitle>
+            <ArtifactDescription>
+              <span
+                style={{
+                  fontSize: "11px",
+                  padding: "2px 7px",
+                  borderRadius: "5px",
+                  background: "rgba(34, 197, 94, 0.12)",
+                  color: "#22c55e",
+                  fontFamily: '"JetBrains Mono", monospace',
+                }}
+              >
+                {artifact.type}
+              </span>
+            </ArtifactDescription>
+          </div>
+        </div>
+        <ArtifactActionsRow>
+          <ArtifactAction tooltip="Preview">
+            <Eye size={14} />
+          </ArtifactAction>
+          <ArtifactAction tooltip="Copy">
+            <Download size={14} />
+          </ArtifactAction>
+        </ArtifactActionsRow>
+      </ArtifactHeader>
+      <ArtifactContent>
+        <p
+          style={{
+            color: "#d7e2ed",
+            fontSize: "13px",
+            lineHeight: "1.55",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {artifact.summary}
+        </p>
+      </ArtifactContent>
+    </ArtifactRoot>
+  );
 }

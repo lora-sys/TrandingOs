@@ -2,6 +2,8 @@ import type { SkillContext } from "../skills/types.js";
 import type { SkillRegistry } from "../skills/registry.js";
 import type { WorkflowEngine } from "./workflow-engine.js";
 import type { WorkflowContext } from "./types.js";
+import type { ResearchBundle } from "@trading-pi/research-hub";
+import { sourceQuality } from "@trading-pi/research-hub";
 
 async function runSkill<T>(context: WorkflowContext, skillId: string, input: unknown): Promise<T> {
   const skill = context.skills.get(skillId);
@@ -84,7 +86,7 @@ ${context.memory.contextBlock("user")}`,
         "market.snapshot",
         input,
       );
-      const artifact = await runSkill(context, "artifact.create", {
+      const artifact = await runSkill<{ id: string; path: string }>(context, "artifact.create", {
         type: "market-snapshot",
         title: `Market Snapshot ${input.symbol}`,
         summary: `CoinGecko and CCXT snapshot for ${input.symbol}.`,
@@ -100,19 +102,19 @@ ${context.memory.contextBlock("user")}`,
     description: "Generate an AI research report artifact from real market data.",
     riskLevel: "low",
     execute: async (input: { symbol: string; exchange?: string; workspaceId?: string }, context) => {
-      const researchContext = await runSkill(context, "research.asset", input);
+      const researchContext = await runSkill<ResearchBundle & { sourceQuality: ReturnType<typeof sourceQuality> }>(context, "research.asset", input);
       const report = await runSkill<{ text: string }>(context, "research.report", {
         symbol: input.symbol,
         researchContext,
       });
-      const artifact = await runSkill(context, "artifact.create", {
+      const artifact = await runSkill<{ id: string; path: string }>(context, "artifact.create", {
         type: "research-report",
         title: `Research Report ${input.symbol}`,
         summary: `AI research report for ${input.symbol}.`,
-        markdown: `# Research Report ${input.symbol}\n\n${report.text}\n\n## Sources\n\n\`\`\`json\n${JSON.stringify((researchContext as any).sources ?? [], null, 2)}\n\`\`\`\n\n## Source Quality\n\n\`\`\`json\n${JSON.stringify((researchContext as any).sourceQuality ?? {}, null, 2)}\n\`\`\`\n\n## Observed Context\n\n\`\`\`json\n${JSON.stringify(researchContext, null, 2)}\n\`\`\`\n`,
+        markdown: `# Research Report ${input.symbol}\n\n${report.text}\n\n## Sources\n\n\`\`\`json\n${JSON.stringify(researchContext.sources ?? [], null, 2)}\n\`\`\`\n\n## Source Quality\n\n\`\`\`json\n${JSON.stringify(researchContext.sourceQuality ?? {}, null, 2)}\n\`\`\`\n\n## Observed Context\n\n\`\`\`json\n${JSON.stringify(researchContext, null, 2)}\n\`\`\`\n`,
       });
       if (input.workspaceId) {
-        context.repos.linkWorkspace({ workspaceId: input.workspaceId, kind: "artifact", refId: (artifact as any).id, metadata: { workflow: "research.asset" } });
+        context.repos.linkWorkspace({ workspaceId: input.workspaceId, kind: "artifact", refId: artifact.id, metadata: { workflow: "research.asset" } });
       }
       return { symbol: input.symbol, researchContext, report, artifact };
     },
@@ -176,7 +178,7 @@ Position sizing JSON: ${JSON.stringify(risk)}.
 Trade risk JSON: ${JSON.stringify(tradeRisk)}.
 Return sections: thesis, invalidation, entry, stop, take profit, risk, approval notes.`,
       });
-      const tradePlanArtifact = await runSkill(context, "artifact.create", {
+      const tradePlanArtifact = await runSkill<{ id: string; path: string }>(context, "artifact.create", {
         type: "trade-plan",
         title: `Trade Plan ${input.symbol}`,
         summary: `AI-assisted trade plan for ${input.symbol}.`,
@@ -193,7 +195,7 @@ Return sections: thesis, invalidation, entry, stop, take profit, risk, approval 
         key: `trade-plan:${input.symbol}:${Date.now()}`,
         value: `direction=${input.direction ?? "undecided"} entry=${entry} stop=${stop} budget=${input.budgetUsd}`,
         sourceType: "artifact",
-        sourceId: (tradePlanArtifact as any).id,
+        sourceId: tradePlanArtifact.id,
         importance: 0.7,
         metadata: { symbol: input.symbol, risk: tradeRisk },
       });
@@ -257,7 +259,7 @@ Return sections: Scorecard, What Worked, Rule Breaks, Risk Notes, Tomorrow Focus
         runSkill(context, "workspace.create", { id: "workspace_eth", name: "ETH Workspace", kind: "eth", context: { symbol: "ETH/USDT" } }),
         runSkill(context, "workspace.create", { id: "workspace_macro", name: "Macro Workspace", kind: "macro", context: { focus: "rates, dollar, liquidity" } }),
       ]);
-      const artifact = await runSkill(context, "artifact.create", {
+      const artifact = await runSkill<{ id: string; path: string }>(context, "artifact.create", {
         type: "os-bootstrap",
         title: "Trading Pi OS Bootstrap",
         summary: "Initialized MCP, marketplace, and workspace foundation domains.",
@@ -283,7 +285,7 @@ Return sections: Scorecard, What Worked, Rule Breaks, Risk Notes, Tomorrow Focus
         symbol: input.symbol,
         timeframe: input.timeframe,
       });
-      const artifact = await runSkill(context, "artifact.create", {
+      const artifact = await runSkill<{ id: string; path: string }>(context, "artifact.create", {
         type: "backtest-report",
         title: `Backtest Report ${input.name}`,
         summary: `Sandbox backtest bridge report for ${input.name}.`,

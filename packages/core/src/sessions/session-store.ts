@@ -73,5 +73,40 @@ export class SessionStore {
       .map((line) => JSON.parse(line))
       .filter((entry) => entry.type !== "session");
   }
+
+  createFork(parentSessionId: string): { id: string; name: string; path: string; createdAt: string; parentSessionId: string } {
+    const parent = this.getSession(parentSessionId);
+    if (!parent) throw new Error(`Parent session not found: ${parentSessionId}`);
+    const sessionId = `ses_${randomUUID()}`;
+    const createdAt = nowIso();
+    const name = `Fork of ${parentSessionId.slice(0, 12)}`;
+    const path = resolve(this.paths.sessionsDir, `${createdAt.replace(/[:.]/g, "-")}_${sessionId}.jsonl`);
+    const header = JSON.stringify({
+      type: "session",
+      version: 1,
+      id: sessionId,
+      timestamp: createdAt,
+      name,
+      parentSessionId,
+    });
+    this.repos.db
+      .prepare("INSERT INTO sessions (id, name, path, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?, 'active')")
+      .run(sessionId, name, path, createdAt, createdAt);
+    // Copy all parent messages to the fork
+    const parentEntries = this.read(parentSessionId);
+    writeFileSync(path, `${header}\n`);
+    for (const entry of parentEntries) {
+      const forkEntry: SessionEntry = {
+        type: entry.type,
+        id: `ent_${randomUUID().slice(0, 8)}`,
+        parentId: null,
+        timestamp: nowIso(),
+        data: entry.data,
+      };
+      appendFileSync(path, `${JSON.stringify(forkEntry)}\n`);
+    }
+    this.repos.createSessionFork(sessionId, parentSessionId, name);
+    return { id: sessionId, name, path, createdAt, parentSessionId };
+  }
 }
 

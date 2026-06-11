@@ -23,6 +23,17 @@ export class TradingPiDatabase {
         status TEXT NOT NULL DEFAULT 'active'
       );
 
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        parts TEXT NOT NULL DEFAULT '[]',
+        model TEXT,
+        created_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        FOREIGN KEY (session_id) REFERENCES sessions(id)
+      );
+
       CREATE TABLE IF NOT EXISTS timeline_events (
         id TEXT PRIMARY KEY,
         session_id TEXT,
@@ -307,6 +318,10 @@ export class TradingPiDatabase {
         updated_at TEXT NOT NULL
       );
     `);
+    this.addColumnIfMissing("sessions", "parent_session_id", "TEXT REFERENCES sessions(id)");
+    this.addColumnIfMissing("sessions", "message_count", "INTEGER DEFAULT 0");
+    this.addColumnIfMissing("sessions", "prompt_tokens", "INTEGER DEFAULT 0");
+    this.addColumnIfMissing("sessions", "completion_tokens", "INTEGER DEFAULT 0");
     this.addColumnIfMissing("memory_records", "domain", "TEXT");
     this.addColumnIfMissing("memory_records", "workspace_id", "TEXT");
     this.addColumnIfMissing("memory_records", "source_type", "TEXT");

@@ -932,6 +932,443 @@ ${normalized.notes}
       blocked: true,
     }),
   });
+
+  // === Market (missing from SDK spec) ===
+
+  registry.register({
+    id: "market.fetch_orderbook",
+    name: "Fetch Orderbook",
+    description: "Fetch an exchange orderbook through CCXT.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      symbol: Type.String(),
+      exchange: Type.Optional(Type.String()),
+      limit: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, context) => {
+      const exchangeId = input.exchange ?? context.env.defaultExchange;
+      const Exchange = (await import("ccxt")).default as any;
+      const exchange = new Exchange[exchangeId]({ enableRateLimit: true });
+      const orderbook = await exchange.fetchOrderBook(input.symbol, input.limit ?? 25);
+      return {
+        source: "ccxt",
+        exchange: exchangeId,
+        symbol: input.symbol,
+        bids: orderbook.bids.slice(0, (input.limit ?? 25)),
+        asks: orderbook.asks.slice(0, (input.limit ?? 25)),
+        timestamp: orderbook.timestamp ?? Date.now(),
+        datetime: orderbook.datetime ?? new Date().toISOString(),
+        nonce: orderbook.nonce ?? null,
+      };
+    },
+  });
+
+  registry.register({
+    id: "market.fetch_balance",
+    name: "Fetch Balance",
+    description: "Fetch exchange balance through CCXT.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      exchange: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const exchangeId = input.exchange ?? context.env.defaultExchange;
+      const Exchange = (await import("ccxt")).default as any;
+      const exchange = new Exchange[exchangeId]({ enableRateLimit: true });
+      const balance = await exchange.fetchBalance();
+      return {
+        source: "ccxt",
+        exchange: exchangeId,
+        total: balance.total,
+        used: balance.used,
+        free: balance.free,
+        timestamp: balance.timestamp ?? Date.now(),
+        datetime: balance.datetime ?? new Date().toISOString(),
+      };
+    },
+  });
+
+  // === Risk (missing from SDK spec) ===
+
+  registry.register({
+    id: "risk.stop_loss",
+    name: "Stop Loss Calculator",
+    description: "Calculate a stop loss price based on entry and risk percentage.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      entry: Type.Number(),
+      riskPct: Type.Optional(Type.Number()),
+      direction: Type.Optional(Type.String()),
+    }),
+    execute: async (input) => {
+      const riskPct = input.riskPct ?? 2;
+      const direction = input.direction ?? "long";
+      const stopPrice =
+        direction === "long"
+          ? input.entry * (1 - riskPct / 100)
+          : input.entry * (1 + riskPct / 100);
+      const stopDistance = Math.abs(input.entry - stopPrice);
+      return {
+        entry: input.entry,
+        riskPct,
+        direction,
+        stopPrice,
+        stopDistance,
+        stopPctOfEntry: (stopDistance / input.entry) * 100,
+      };
+    },
+  });
+
+  registry.register({
+    id: "risk.daily_loss_guard",
+    name: "Daily Loss Guard",
+    description: "Check today's realized loss against the configured daily loss limit.",
+    riskLevel: "medium",
+    permission: "read",
+    parameters: Type.Object({
+      maxDailyLossUsd: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, context) => {
+      const maxLoss = input.maxDailyLossUsd ?? 500;
+      const today = new Date().toISOString().slice(0, 10);
+      const closedTrades = context.repos.db
+        .prepare("SELECT pnl FROM trades WHERE status = 'closed' AND opened_at >= ?")
+        .all(today) as Array<{ pnl: number }>;
+      const todayRealizedPnl = closedTrades.reduce((sum, t) => sum + t.pnl, 0);
+      const lossesToday = closedTrades.filter((t) => t.pnl < 0).reduce((sum, t) => sum + Math.abs(t.pnl), 0);
+      const remainingLossBudget = Math.max(0, maxLoss - lossesToday);
+      const guardActive = lossesToday >= maxLoss;
+      context.repos.createAuditRecord({
+        category: "risk",
+        action: "risk.daily_loss_guard",
+        status: guardActive ? "blocked" : "completed",
+        payload: { lossesToday, maxLoss, remainingLossBudget, guardActive },
+      });
+      return {
+        date: today,
+        maxDailyLossUsd: maxLoss,
+        lossesToday,
+        todayRealizedPnl,
+        remainingLossBudget,
+        guardActive,
+        blocked: guardActive,
+        message: guardActive
+          ? `Daily loss limit of $${maxLoss} reached ($${lossesToday.toFixed(2)}). Trading blocked.`
+          : `$${remainingLossBudget.toFixed(2)} of $${maxLoss} daily loss budget remaining.`,
+      };
+    },
+  });
+
+  // === Execution (missing from SDK spec) ===
+
+  registry.register({
+    id: "execution.create_plan",
+    name: "Create Execution Plan",
+    description: "Generate a structured trade execution plan with risk guardrails.",
+    riskLevel: "medium",
+    permission: "write",
+    parameters: Type.Object({
+      symbol: Type.String(),
+      side: Type.Union([Type.Literal("buy"), Type.Literal("sell")]),
+      quantity: Type.Number(),
+      price: Type.Number(),
+      stopLoss: Type.Optional(Type.Number()),
+      takeProfit: Type.Optional(Type.Number()),
+      reason: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const planId = `plan_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const artifact = context.artifacts.create({
+        type: "execution-plan",
+        title: `Execution Plan ${planId} - ${input.symbol} ${input.side.toUpperCase()}`,
+        summary: input.reason ?? `Planned ${input.side} of ${input.quantity} ${input.symbol} at $${input.price}`,
+        markdown: `# Execution Plan ${planId}
+
+- Symbol: ${input.symbol}
+- Side: ${input.side}
+- Quantity: ${input.quantity}
+- Price: $${input.price}
+- Notional: $${(input.quantity * input.price).toFixed(2)}
+- Stop Loss: ${input.stopLoss ? `$${input.stopLoss}` : "not set"}
+- Take Profit: ${input.takeProfit ? `$${input.takeProfit}` : "not set"}
+- Reason: ${input.reason ?? "not specified"}
+- Created: ${new Date().toISOString()}
+
+## Risk Check
+
+${input.stopLoss ? `Stop distance: ${(Math.abs(input.price - input.stopLoss) / input.price * 100).toFixed(2)}%` : "No stop loss set — high risk."}
+
+${input.takeProfit ? `Reward/risk: ${input.stopLoss ? ((input.takeProfit - input.price) / (input.price - input.stopLoss)).toFixed(2) : "N/A"}` : "No take profit set."}`,
+        sessionId: context.sessionId,
+        workflowRunId: context.workflowRunId,
+        payload: input,
+      });
+      context.repos.createAuditRecord({
+        category: "execution",
+        action: "execution.create_plan",
+        status: "completed",
+        payload: { planId, symbol: input.symbol, side: input.side, artifactId: artifact.id },
+      });
+      return { planId, artifact, plan: input, createdAt: new Date().toISOString() };
+    },
+  });
+
+  registry.register({
+    id: "execution.real_order_guarded",
+    name: "Real Order (Guarded)",
+    description: "Place a real exchange order through CCXT. Disabled by default — requires approval and exchange.real_trade permission.",
+    riskLevel: "high",
+    permission: "dangerous",
+    parameters: Type.Object({
+      symbol: Type.String(),
+      side: Type.Union([Type.Literal("buy"), Type.Literal("sell")]),
+      quantity: Type.Number(),
+      price: Type.Optional(Type.Number()),
+      orderType: Type.Optional(Type.String()),
+      planArtifactId: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const approvalId = context.approvals.request({
+        action: "execution.real_order_guarded",
+        riskLevel: "high",
+        reason: `Real ${input.side} order for ${input.quantity} ${input.symbol}${input.price ? ` at $${input.price}` : " (market)"}. Requires explicit manual approval.`,
+        payload: input,
+        sessionId: context.sessionId,
+        workflowRunId: context.workflowRunId,
+      });
+      context.repos.createAuditRecord({
+        category: "execution",
+        action: "execution.real_order_guarded",
+        status: "blocked",
+        payload: { symbol: input.symbol, side: input.side, quantity: input.quantity, approvalId, reason: "Requires explicit manual approval." },
+      });
+      return {
+        blocked: true,
+        approvalId,
+        message:
+          "Real order execution is disabled by default. To enable, configure exchange API keys and grant exchange.real_trade permission via the approval system.",
+        order: null,
+      };
+    },
+  });
+
+  registry.register({
+    id: "execution.cancel_order",
+    name: "Cancel Order",
+    description: "Cancel an existing paper or tracked order.",
+    riskLevel: "medium",
+    permission: "write",
+    parameters: Type.Object({
+      orderId: Type.String(),
+      symbol: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const existing = context.repos.db
+        .prepare("SELECT * FROM orders WHERE id = ?")
+        .get(input.orderId) as { id: string; symbol: string; status: string; side: string } | undefined;
+      if (!existing) {
+        return { cancelled: false, message: `Order not found: ${input.orderId}`, orderId: input.orderId };
+      }
+      if (existing.status === "cancelled") {
+        return { cancelled: false, message: `Order ${input.orderId} was already cancelled.`, orderId: input.orderId };
+      }
+      context.repos.db.prepare("UPDATE orders SET status = 'cancelled' WHERE id = ?").run(input.orderId);
+      context.repos.createAuditRecord({
+        category: "execution",
+        action: "execution.cancel_order",
+        status: "completed",
+        payload: { orderId: input.orderId, symbol: existing.symbol, side: existing.side },
+      });
+      return { cancelled: true, orderId: input.orderId, symbol: existing.symbol, side: existing.side, previousStatus: existing.status };
+    },
+  });
+
+  // === Journal (missing from SDK spec) ===
+
+  registry.register({
+    id: "journal.log_signal",
+    name: "Log Trading Signal",
+    description: "Log a trading signal observation to the journal and memory.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({
+      signal: Type.String(),
+      symbol: Type.String(),
+      confidence: Type.Optional(Type.Number()),
+      notes: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const signalId = `sig_${Date.now()}`;
+      context.repos.createAuditRecord({
+        category: "journal",
+        action: "journal.log_signal",
+        status: "completed",
+        payload: { signalId, signal: input.signal, symbol: input.symbol, confidence: input.confidence, notes: input.notes },
+      });
+      context.memory.write({
+        domain: "market",
+        key: `signal:${signalId}`,
+        value: `${input.signal} on ${input.symbol} confidence=${input.confidence ?? "N/A"}: ${input.notes ?? ""}`,
+        sourceType: "skill",
+        sourceId: "journal.log_signal",
+        importance: 0.7,
+        metadata: { signal: input.signal, symbol: input.symbol, confidence: input.confidence },
+      });
+      context.repos.createTimeline({
+        sessionId: context.sessionId,
+        type: "signal",
+        title: `Signal: ${input.signal} on ${input.symbol}`,
+        detail: `${input.notes ?? ""} (confidence: ${input.confidence ?? "N/A"})`,
+        status: "info",
+        payload: { signalId, signal: input.signal, symbol: input.symbol, confidence: input.confidence },
+      });
+      return {
+        signalId,
+        signal: input.signal,
+        symbol: input.symbol,
+        confidence: input.confidence ?? null,
+        notes: input.notes ?? null,
+        loggedAt: new Date().toISOString(),
+      };
+    },
+  });
+
+  registry.register({
+    id: "journal.log_emotion",
+    name: "Log Emotional State",
+    description: "Log the trader's emotional state to the journal and memory for discipline tracking.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({
+      emotion: Type.String(),
+      intensity: Type.Optional(Type.Number()),
+      notes: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const entryId = `emo_${Date.now()}`;
+      const intensity = Math.max(1, Math.min(10, input.intensity ?? 5));
+      context.repos.createAuditRecord({
+        category: "journal",
+        action: "journal.log_emotion",
+        status: "completed",
+        payload: { entryId, emotion: input.emotion, intensity, notes: input.notes },
+      });
+      context.memory.write({
+        domain: "trade",
+        key: `emotion:${entryId}`,
+        value: `${input.emotion} (${intensity}/10): ${input.notes ?? ""}`,
+        sourceType: "skill",
+        sourceId: "journal.log_emotion",
+        importance: 0.6,
+        metadata: { emotion: input.emotion, intensity },
+      });
+      return {
+        entryId,
+        emotion: input.emotion,
+        intensity,
+        notes: input.notes ?? null,
+        loggedAt: new Date().toISOString(),
+      };
+    },
+  });
+
+  registry.register({
+    id: "journal.attach_screenshot",
+    name: "Attach Screenshot",
+    description: "Attach a screenshot file path to an existing journal entry.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({
+      journalId: Type.String(),
+      screenshotPath: Type.String(),
+      description: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const existing = context.repos.db
+        .prepare("SELECT id FROM journal_entries WHERE id = ?")
+        .get(input.journalId) as { id: string } | undefined;
+      if (!existing) {
+        return { attached: false, message: `Journal entry not found: ${input.journalId}` };
+      }
+      context.repos.db
+        .prepare("UPDATE journal_entries SET screenshot_path = ? WHERE id = ?")
+        .run(input.screenshotPath, input.journalId);
+      context.repos.createAuditRecord({
+        category: "journal",
+        action: "journal.attach_screenshot",
+        status: "completed",
+        payload: { journalId: input.journalId, screenshotPath: input.screenshotPath, description: input.description },
+      });
+      return {
+        attached: true,
+        journalId: input.journalId,
+        screenshotPath: input.screenshotPath,
+        description: input.description ?? null,
+        attachedAt: new Date().toISOString(),
+      };
+    },
+  });
+
+  // === Airdrop (missing from SDK spec) ===
+
+  registry.register({
+    id: "airdrop.search_opportunities",
+    name: "Search Airdrop Opportunities",
+    description: "Search for airdrop opportunities through configured search providers.",
+    riskLevel: "medium",
+    permission: "read",
+    parameters: Type.Object({
+      query: Type.Optional(Type.String()),
+      limit: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, context) => {
+      const searchQuery = input.query ?? "crypto airdrop opportunities 2026";
+      const result = await searchHub(context).query({ query: searchQuery, limit: input.limit ?? 10 });
+      context.repos.createAuditRecord({
+        category: "airdrop",
+        action: "airdrop.search_opportunities",
+        status: "completed",
+        payload: { query: searchQuery, resultCount: result.results?.length ?? 0 },
+      });
+      return {
+        query: searchQuery,
+        results: result.results ?? [],
+        searchedAt: new Date().toISOString(),
+      };
+    },
+  });
+
+  registry.register({
+    id: "airdrop.check_eligibility",
+    name: "Check Airdrop Eligibility",
+    description: "Check airdrop eligibility by searching for project-specific criteria.",
+    riskLevel: "medium",
+    permission: "read",
+    parameters: Type.Object({
+      project: Type.String(),
+      walletAddress: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const searchQuery = `${input.project} airdrop eligibility criteria requirements`;
+      const result = await searchHub(context).query({ query: searchQuery, limit: 5 });
+      context.repos.createAuditRecord({
+        category: "airdrop",
+        action: "airdrop.check_eligibility",
+        status: "completed",
+        payload: { project: input.project, walletAddress: input.walletAddress ?? null },
+      });
+      return {
+        project: input.project,
+        walletAddress: input.walletAddress ?? null,
+        searchResults: result.results ?? [],
+        checkedAt: new Date().toISOString(),
+        note: "Eligibility check completed via web search. Verify results against the project's official documentation.",
+      };
+    },
+  });
 }
 
 async function fetchCoinMarketCapQuote(apiKey: string | undefined, symbol: string) {
@@ -941,7 +1378,7 @@ async function fetchCoinMarketCapQuote(apiKey: string | undefined, symbol: strin
   url.searchParams.set("symbol", base);
   const response = await fetch(url, { headers: { "X-CMC_PRO_API_KEY": apiKey } });
   if (!response.ok) throw new Error(`CoinMarketCap HTTP ${response.status}`);
-  const json = (await response.json()) as any;
+  const json: { data?: Record<string, { quote?: Record<string, { price: number; percent_change_24h?: number }> }> } = await response.json();
   const quote = json.data?.[base]?.quote?.USD;
   if (!quote) throw new Error(`CoinMarketCap did not return USD quote for ${base}`);
   return {
@@ -967,15 +1404,15 @@ async function fetchDefiLlamaPrice(symbol: string) {
   if (!coinId) throw new Error(`DefiLlama price mapping is not configured for ${base}`);
   const response = await fetch(`https://coins.llama.fi/prices/current/${encodeURIComponent(coinId)}`);
   if (!response.ok) throw new Error(`DefiLlama HTTP ${response.status}`);
-  const json = (await response.json()) as any;
+  const json: { coins?: Record<string, { price: number; confidence?: number }> } = await response.json();
   const price = json.coins?.[coinId];
   if (!price) throw new Error(`DefiLlama did not return price for ${coinId}`);
   return { source: "defillama", symbol, coinId, priceUsd: price.price, confidence: price.confidence ?? null, fetchedAt: new Date().toISOString() };
 }
 
-async function createBrowserArtifact(action: string, input: unknown, result: BrowserLayerActionResult, context: SkillContext) {
+async function createBrowserArtifact(action: string, input: { url?: string; query?: string }, result: BrowserLayerActionResult, context: SkillContext) {
   const kind = result.artifactKind ?? "markdown";
-  const title = `Browser ${action} ${result.url ?? (input as any)?.url ?? (input as any)?.query ?? ""}`.trim();
+  const title = `Browser ${action} ${result.url ?? input.url ?? input.query ?? ""}`.trim();
   const contentType = kind === "html" ? "text/html" : kind === "pdf" ? "application/pdf" : kind === "png" ? "image/png" : "text/markdown";
   const content = result.content ?? JSON.stringify(redactBrowserResult(result), null, 2);
   const markdown = `# ${title}

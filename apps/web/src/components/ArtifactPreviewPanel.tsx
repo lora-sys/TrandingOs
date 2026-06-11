@@ -1,83 +1,126 @@
-import { Button } from "@heroui/react/button";
-import { Card } from "@heroui/react/card";
 import { Chip } from "@heroui/react/chip";
-import { Tabs } from "@heroui/react/tabs";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { Tab, TabList, TabPanel, Tabs } from "@heroui/react/tabs";
 import { Clipboard, Download, Eye } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { tradingPiApi } from "../api/client.js";
 
+import { Artifact, ArtifactHeader, ArtifactTitle, ArtifactDescription, ArtifactActions, ArtifactAction, ArtifactContent } from "@/components/ai-elements/artifact.js";
+
 export function ArtifactPreviewPanel() {
-  const artifacts = useQuery({ queryKey: ["artifacts"], queryFn: tradingPiApi.artifacts });
-  const latest = artifacts.data?.[0];
-  const preview = useQuery({
-    queryKey: ["artifact-preview", latest?.id],
-    queryFn: async () => latest ? tradingPiApi.artifactPreview(latest.id) : undefined,
-    enabled: Boolean(latest?.id),
-  });
-  const copy = useMutation({
-    mutationFn: async () => {
-      const content = preview.data?.output.content ?? latest?.summary ?? "";
-      await navigator.clipboard.writeText(content);
-      return true;
-    },
-  });
+  const [latest, setLatest] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Load the latest artifact (no preview auto-fetch)
+  useEffect(() => {
+    let cancelled = false;
+    tradingPiApi.artifacts().then((data: any) => {
+      if (cancelled) return;
+      const arr = data ?? [];
+      if (arr.length > 0) setLatest(arr[0]);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handlePreview = useCallback(async () => {
+    if (!latest) return;
+    setShowPreview(true);
+    try {
+      const data = await tradingPiApi.artifactPreview(latest.id);
+      setPreviewData(data);
+    } catch {
+      setPreviewData({ output: { content: latest.summary, contentType: latest.type } });
+    }
+  }, [latest]);
+
+  const handleCopy = useCallback(async () => {
+    const content = previewData?.output?.content ?? latest?.summary ?? "";
+    await navigator.clipboard.writeText(content);
+  }, [previewData, latest]);
+
+  if (!latest) {
+    return (
+      <Artifact>
+        <ArtifactHeader>
+          <ArtifactTitle><Eye size={16} /> Artifact Preview</ArtifactTitle>
+        </ArtifactHeader>
+        <ArtifactContent>
+          <p style={{ color: "#8da1b6", textAlign: "center", padding: "24px 0" }}>No artifact selected.</p>
+        </ArtifactContent>
+      </Artifact>
+    );
+  }
 
   return (
-    <Card className="artifactPreview heroPanel">
-      <Card.Header className="panelTitle"><Eye size={16} /> Artifact Preview</Card.Header>
-      {!latest && <p className="empty">No artifact selected.</p>}
-      {latest && (
-        <>
-          <div className="previewMeta">
-            <strong>{latest.title}</strong>
-            <Chip size="sm" variant="flat" color={preview.data?.output.previewReady ? "success" : "warning"}>
-              {preview.data?.output.contentType ?? latest.type}
-            </Chip>
+    <Artifact>
+      <ArtifactHeader>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Eye size={16} />
+          <div>
+            <ArtifactTitle>{latest.title}</ArtifactTitle>
+            <ArtifactDescription>
+              <Chip size="sm" variant="soft" color={previewData?.output?.previewReady ? "success" : "warning"}>
+                {previewData?.output?.contentType ?? latest.type}
+              </Chip>
+            </ArtifactDescription>
           </div>
-          <Tabs aria-label="Artifact preview tabs">
-            <Tabs.List>
-              <Tabs.Tab id="markdown">Markdown</Tabs.Tab>
-              <Tabs.Tab id="html">HTML</Tabs.Tab>
-              <Tabs.Tab id="pdf">PDF</Tabs.Tab>
-              <Tabs.Tab id="data">Data</Tabs.Tab>
-              <Tabs.Tab id="meta">Meta</Tabs.Tab>
-            </Tabs.List>
-            <Tabs.Panel id="markdown">
-              <div className="previewScroll">
-                <pre>{preview.data?.output.content ?? latest.summary}</pre>
-              </div>
-            </Tabs.Panel>
-            <Tabs.Panel id="html">
-              <div className="previewScroll">
-                {String(preview.data?.output.contentType ?? "").includes("html") ? (
-                  <iframe title="HTML artifact preview" className="artifactFrame" sandbox="allow-same-origin" srcDoc={preview.data?.output.content ?? ""} />
+        </div>
+        <ArtifactActions>
+          <ArtifactAction tooltip="Preview" onClick={handlePreview}>
+            <Eye size={14} />
+          </ArtifactAction>
+          <ArtifactAction tooltip="Copy" onClick={handleCopy}>
+            <Clipboard size={14} />
+          </ArtifactAction>
+        </ArtifactActions>
+      </ArtifactHeader>
+      {showPreview && (
+        <ArtifactContent style={{ padding: 0 }}>
+          <Tabs aria-label="Artifact preview tabs" className="px-3">
+            <TabList>
+            <Tab key="markdown" id="markdown" {...({ children: "Markdown" } as any)} />
+            <Tab key="html" id="html" {...({ children: "HTML" } as any)} />
+            <Tab key="data" id="data" {...({ children: "Data" } as any)} />
+            <Tab key="meta" id="meta" {...({ children: "Meta" } as any)} />
+            </TabList>
+            <TabPanel key="markdown">
+              <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2" style={{ color: "#d7e2ed" }}>
+                {previewData?.output?.content ?? latest.summary}
+              </pre>
+            </TabPanel>
+            <TabPanel key="html">
+              <div className="max-h-[56vh] overflow-auto p-2">
+                {String(previewData?.output?.contentType ?? "").includes("html") ? (
+                  <iframe
+                    title="HTML preview"
+                    className="w-full min-h-[420px] border border-[#26384e] rounded-lg bg-white"
+                    sandbox="allow-same-origin"
+                    srcDoc={previewData?.output?.content ?? ""}
+                  />
                 ) : (
-                  <pre>{JSON.stringify({ previewReady: preview.data?.output.previewReady, previewPayload: preview.data?.output.previewPayload }, null, 2)}</pre>
+                  <pre className="font-mono text-sm" style={{ color: "#d7e2ed" }}>
+                    {JSON.stringify(
+                      { previewReady: previewData?.output?.previewReady, previewPayload: previewData?.output?.previewPayload },
+                      null,
+                      2,
+                    )}
+                  </pre>
                 )}
               </div>
-            </Tabs.Panel>
-            <Tabs.Panel id="pdf">
-              <div className="previewScroll">
-                <pre>{JSON.stringify({ contentType: preview.data?.output.contentType, export: "PDF export is available when Browser Skill/AIO Sandbox produces a PDF artifact.", previewPayload: preview.data?.output.previewPayload }, null, 2)}</pre>
-              </div>
-            </Tabs.Panel>
-            <Tabs.Panel id="data">
-              <div className="previewScroll">
-                <pre>{JSON.stringify(latest, null, 2)}</pre>
-              </div>
-            </Tabs.Panel>
-            <Tabs.Panel id="meta">
-              <div className="previewScroll">
-                <pre>{JSON.stringify(preview.data?.output.previewPayload ?? latest, null, 2)}</pre>
-              </div>
-            </Tabs.Panel>
+            </TabPanel>
+            <TabPanel key="data">
+              <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2" style={{ color: "#d7e2ed" }}>
+                {JSON.stringify(latest, null, 2)}
+              </pre>
+            </TabPanel>
+            <TabPanel key="meta">
+              <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2" style={{ color: "#d7e2ed" }}>
+                {JSON.stringify(previewData?.output?.previewPayload ?? latest, null, 2)}
+              </pre>
+            </TabPanel>
           </Tabs>
-          <div className="previewActions">
-            <Button size="sm" variant="secondary" onClick={() => copy.mutate()}><Clipboard size={14} /> Copy</Button>
-            <Button size="sm" variant="secondary"><Download size={14} /> Export</Button>
-          </div>
-        </>
+        </ArtifactContent>
       )}
-    </Card>
+    </Artifact>
   );
 }
