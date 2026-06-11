@@ -16,6 +16,52 @@ export const tradingPiApi = {
   status: () => rpc("/api/status"),
   aiPing: () => rpc("/api/ai/ping"),
   sendMessage: (message: string, sessionId?: string) => rpc("/api/session/message", { message, sessionId }),
+  /** SSE streaming: returns an EventTarget that emits agent events + 'done' */
+  sendMessageStream: (message: string, sessionId?: string) => {
+    const target = new EventTarget();
+    const body = JSON.stringify({ message, sessionId });
+    fetch(`${BASE}/api/session/message/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    }).then(async (res) => {
+      if (!res.ok) {
+        target.dispatchEvent(new CustomEvent("error", { detail: new Error(`SSE ${res.status}`) }));
+        return;
+      }
+      const reader = res.body?.getReader();
+      if (!reader) { target.dispatchEvent(new CustomEvent("error", { detail: new Error("No body") })); return; }
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // Parse SSE frames: event: xxx\ndata: {...}\n\n
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          const lines = frame.split("\n");
+          let eventType = "";
+          let dataStr = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) eventType = line.slice(7);
+            else if (line.startsWith("data: ")) dataStr = line.slice(6);
+          }
+          if (!dataStr) continue;
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (eventType === "done") {
+              target.dispatchEvent(new CustomEvent("done", { detail: parsed }));
+            } else {
+              target.dispatchEvent(new CustomEvent(eventType, { detail: parsed }));
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+    }).catch((err) => target.dispatchEvent(new CustomEvent("error", { detail: err })));
+    return target;
+  },
   sessions: () => rpc("/api/sessions"),
   messages: (sessionId: string) => rpc(`/api/messages?sessionId=${sessionId}`),
   skills: () => rpc("/api/skills"),

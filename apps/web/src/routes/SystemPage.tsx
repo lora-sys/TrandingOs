@@ -18,7 +18,7 @@ export function SystemPage() {
     <section className="pageStack">
       <header className="pageHeader"><h1>System</h1><p>Permissions, secrets, cache, MCP, AIO Sandbox, memory, and trading mode.</p></header>
       <Card className="heroPanel">
-        <Card.Header className="panelTitle"><MonitorCog size={16} /> Runtime Status <Chip size="sm" color="primary" variant="solid">local-first</Chip></Card.Header>
+        <Card.Header className="panelTitle"><MonitorCog size={16} /> Runtime Status <Chip size="sm" color="accent" variant="primary">local-first</Chip></Card.Header>
         <div className="marketHeroGrid">
           <Metric icon={<KeyRound size={16} />} label="OpenAI" value={status.data?.env.openai.configured ? "configured" : "missing"} />
           <Metric icon={<Shield size={16} />} label="Trading Mode" value={status.data?.env.local.tradingMode ?? "paper"} />

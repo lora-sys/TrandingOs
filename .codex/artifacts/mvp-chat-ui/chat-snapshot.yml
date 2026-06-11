@@ -1,0 +1,158 @@
+- main [ref=e4]:
+  - complementary [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: π
+      - generic [ref=e8]:
+        - strong [ref=e9]: Trading Pi
+        - generic [ref=e10]: Local Trading OS
+    - navigation [ref=e11]:
+      - link "Chat" [ref=e12] [cursor=pointer]:
+        - /url: /chat
+        - img [ref=e13]
+        - generic [ref=e15]: Chat
+      - link "Workspaces" [ref=e16] [cursor=pointer]:
+        - /url: /workspaces
+        - img [ref=e17]
+        - generic [ref=e19]: Workspaces
+      - link "Market" [ref=e20] [cursor=pointer]:
+        - /url: /market
+        - img [ref=e21]
+        - generic [ref=e24]: Market
+      - link "Research" [ref=e25] [cursor=pointer]:
+        - /url: /research
+        - img [ref=e26]
+        - generic [ref=e38]: Research
+      - link "Planner" [ref=e39] [cursor=pointer]:
+        - /url: /planner
+        - img [ref=e40]
+        - generic [ref=e43]: Planner
+      - link "Portfolio" [ref=e44] [cursor=pointer]:
+        - /url: /portfolio
+        - img [ref=e45]
+        - generic [ref=e47]: Portfolio
+      - link "Journal" [ref=e48] [cursor=pointer]:
+        - /url: /journal
+        - img [ref=e49]
+        - generic [ref=e52]: Journal
+      - link "Review" [ref=e53] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e54]
+        - generic [ref=e59]: Review
+      - link "Evolution" [ref=e60] [cursor=pointer]:
+        - /url: /evolution
+        - img [ref=e61]
+        - generic [ref=e63]: Evolution
+      - link "Marketplace" [ref=e64] [cursor=pointer]:
+        - /url: /marketplace
+        - img [ref=e65]
+        - generic [ref=e75]: Marketplace
+      - link "Beginner" [ref=e76] [cursor=pointer]:
+        - /url: /journey
+        - img [ref=e77]
+        - generic [ref=e80]: Beginner
+      - link "System" [ref=e81] [cursor=pointer]:
+        - /url: /system
+        - img [ref=e82]
+        - generic [ref=e93]: System
+      - link "Settings" [ref=e94] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e95]
+        - generic [ref=e98]: Settings
+    - generic [ref=e99]:
+      - generic [ref=e100]:
+        - generic [ref=e101]:
+          - img [ref=e102]
+          - text: SQLite
+        - generic [ref=e107]: local
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - img [ref=e110]
+          - text: Langfuse
+        - generic [ref=e113]: "on"
+      - generic [ref=e114]:
+        - generic [ref=e115]:
+          - img [ref=e116]
+          - text: Sandbox
+        - generic [ref=e119]: "off"
+      - generic [ref=e120]:
+        - generic [ref=e121]:
+          - img [ref=e122]
+          - text: MCP
+        - generic [ref=e133]: "0"
+  - generic [ref=e135]:
+    - generic [ref=e136]:
+      - generic [ref=e137]:
+        - generic [ref=e138]:
+          - heading "Trading Pi Agent" [level=1] [ref=e139]
+          - paragraph [ref=e140]: One core agent, Workflow + Skills, local artifacts, approval-first execution.
+        - generic [ref=e141]:
+          - generic [ref=e142]: /research ETH
+          - generic [ref=e143]: /plan ETH/USDT 100 spot
+          - generic [ref=e144]: /review-day
+      - log [ref=e145]:
+        - generic [ref=e148]:
+          - img [ref=e150]
+          - generic [ref=e153]:
+            - heading "Start your trading session" [level=3] [ref=e154]
+            - paragraph [ref=e155]: Ask Trading Pi or run /research, /plan, /review-day...
+      - group [ref=e158]:
+        - textbox "Ask Trading Pi or run /research, /plan, /review-day..." [ref=e160]
+        - group [ref=e161]:
+          - button "Submit" [ref=e162]:
+            - img
+    - generic [ref=e163]:
+      - paragraph [ref=e165]:
+        - img [ref=e166]
+        - text: Artifact Preview
+      - paragraph [ref=e170]: No artifact selected.
+  - complementary [ref=e171]:
+    - generic [ref=e172]:
+      - generic [ref=e173]:
+        - img [ref=e174]
+        - text: Execution Timeline
+      - paragraph [ref=e177]: No execution events yet.
+    - generic [ref=e178]:
+      - generic [ref=e179]:
+        - img [ref=e180]
+        - text: Active Skills
+      - generic [ref=e192]:
+        - generic [ref=e194]: ai.respond
+        - generic [ref=e196]: market.coingecko.quote
+        - generic [ref=e198]: market.ccxt.ticker
+        - generic [ref=e200]: market.ccxt.ohlcv
+        - generic [ref=e202]: market.snapshot
+        - generic [ref=e204]: market.router.health
+        - generic [ref=e206]: search.query
+        - generic [ref=e208]: search.extract
+        - generic [ref=e210]: search.summarize
+        - generic [ref=e212]: browser.search
+    - generic [ref=e213]:
+      - generic [ref=e214]:
+        - img [ref=e215]
+        - text: Risk
+      - paragraph [ref=e217]: No pending approvals.
+    - generic [ref=e218]:
+      - generic [ref=e219]:
+        - img [ref=e220]
+        - text: Runtime
+      - generic [ref=e230]:
+        - generic [ref=e231]: MCP
+        - strong [ref=e232]: registry
+        - generic [ref=e233]: MCP Count
+        - strong [ref=e234]: "0"
+        - generic [ref=e235]: Sandbox
+        - strong [ref=e236]: AIO configured
+        - generic [ref=e237]: Browser Runs
+        - strong [ref=e238]: "0"
+        - generic [ref=e239]: Memory
+        - strong [ref=e240]: 0 domains
+        - generic [ref=e241]: AI
+        - strong [ref=e242]: missing
+        - generic [ref=e243]: Permissions
+        - strong [ref=e244]: explicit
+        - generic [ref=e245]: Mode
+        - strong [ref=e246]: paper
+        - generic [ref=e247]: Workflows
+        - strong [ref=e248]:
+          - img [ref=e249]
+          - text: "9"

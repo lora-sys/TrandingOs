@@ -1,4 +1,4 @@
-import { Button } from "@heroui/react/button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@heroui/react/card";
 import { Chip } from "@heroui/react/chip";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,10 +28,10 @@ export function EvolutionPage() {
           <h1>Evolution</h1>
           <p>Review {"->"} Backtest {"->"} Proposal {"->"} Approval {"->"} Strategy lifecycle. Still one Trading Pi Agent.</p>
         </div>
-        <Button variant="primary" onClick={() => evolve.mutate()} isDisabled={evolve.isPending}><Play size={16} /> Propose Evolution</Button>
+        <Button variant="default" onClick={() => evolve.mutate()} disabled={evolve.isPending}><Play size={16} /> Propose Evolution</Button>
       </header>
       <Card className="heroPanel">
-        <Card.Header className="panelTitle"><Brain size={16} /> Evolution Loop <Chip size="sm" color="warning" variant="flat">guarded</Chip></Card.Header>
+        <Card.Header className="panelTitle"><Brain size={16} /> Evolution Loop <Chip size="sm" color="warning" variant="soft">guarded</Chip></Card.Header>
         <div className="journeyGrid">
           {["Review memory", "Backtest bridge", "Proposal artifact", "Approval gate", "Strategy lifecycle"].map((item, index) => (
             <div className="journeyStep" key={item}><strong>{index + 1}. {item}</strong><span>{index === 3 ? "dangerous changes blocked" : "observable artifact-first step"}</span></div>

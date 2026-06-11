@@ -1,0 +1,34 @@
+---
+name: weekly-evolution-review
+description: 每周检查最近迭代的 E2E/Review 结果，自动触发 skill-miner 和 drift-evaluator。
+---
+
+## Preconditions
+
+- 一周内至少完成一次 Development Loop
+- evolution.state.yaml 可读
+- evolution.log.md 可读
+
+## Workflow
+
+1. 读取 evolution.log.md，提取最近一周的迭代记录
+2. 对每个完成的迭代：
+   - 读取 evolution-report.md
+   - 读取 drift-report.yaml
+3. 运行 skill-miner：
+   - 扫描重复出现的失败模式
+   - 检查是否有可沉淀的修复流程
+4. 运行 drift-evaluator：
+   - 计算累积 drift_score
+   - 检查是否有新出现的标准偏离
+5. 输出 evolution_report.yaml：
+   - 本周迭代统计
+   - skill-miner 结果
+   - drift-evaluator 结果
+6. 如果 drift_score > 30 → 建议 Alignment Loop 自动排队
+
+## Hard Rules
+
+- 只读分析，不修改代码
+- 不直接写入 memory，只输出建议
+- 不触发 Development Loop

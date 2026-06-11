@@ -1,0 +1,40 @@
+phase: evolution
+status: idle
+task_id: null
+iteration: 0
+
+current_step: null
+
+completed_steps: []
+pending_steps:
+  - evolution-analyzer
+  - memory-capture
+  - skill-miner
+  - drift-evaluator
+  - iteration-handoff
+
+memory_updates:
+  facts:
+    added: 0
+    updated: 0
+  procedures:
+    added: 0
+  decisions:
+    added: 0
+
+skills:
+  created: []
+  updated: []
+
+drift:
+  score: null
+  level: null
+  next_entry: null
+
+next_iteration:
+  id: null
+  entry: null
+
+blockers: []
+created_at: null
+completed_at: null

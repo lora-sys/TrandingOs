@@ -1,12 +1,13 @@
 phase: development
-status: planning
+status: completed
 task:
-  id: "mvp-chat-ui"
-  goal: "Migrate ChatWorkspace to ai-elements, matching concept design"
-  spec: ".codex/tasks/mvp-chat-ui/current-task-spec.md"
-current_step: plan
-completed_steps: []
-pending_steps:
+  id: "mvp-chat-ui-fixes"
+  goal: "Polish chat UI to production-quality: CSS redesign, 3-column layout, mono font streaming, Inspector restyling"
+  spec: ".codex/tasks/mvp-chat-ui-fixes/current-task-spec.md"
+  branch: "feature/mvp-chat-ui"
+  completed_at: "2026-06-11T14:46:00Z"
+current_step: handoff
+completed_steps:
   - plan
   - branch
   - implement
@@ -14,4 +15,5 @@ pending_steps:
   - playwright_e2e
   - review
   - handoff
+pending_steps: []
 blockers: []

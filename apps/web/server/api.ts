@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { loadEnv, resolveLocalPaths } from "@trading-pi/core";
+import { loadEnv, resolveLocalPaths, ensureLocalPaths, type TradingPiEnv, type LocalPaths } from "@trading-pi/core";
 import { TradingPiDatabase, Repositories } from "@trading-pi/core";
 import { SessionStore } from "@trading-pi/core";
 import { MemoryStore } from "@trading-pi/core";
@@ -11,7 +11,7 @@ import { TradingPiAgent } from "@trading-pi/core";
 import { LangfuseTelemetry } from "@trading-pi/core";
 
 const env = loadEnv();
-const paths = resolveLocalPaths(env);
+const paths = ensureLocalPaths(resolveLocalPaths(env));
 const db = new TradingPiDatabase(paths.sqlitePath);
 db.migrate();
 const repos = new Repositories(db);
@@ -43,6 +43,24 @@ function toChatMessage(entry: any) {
   return { id: entry.id, role: "system", kind: entry.type, content: entry.type.replace(/_/g, " "), timestamp: entry.timestamp };
 }
 
+function compactStreamEvent(event: any) {
+  if (event.type === "message_update") {
+    // Only forward text content to avoid huge payloads
+    const text = event.message?.content
+      ?.filter((b: any) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("") ?? "";
+    return { text, assistantMessageEvent: event.assistantMessageEvent };
+  }
+  if (event.type === "tool_execution_start") {
+    return { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args };
+  }
+  if (event.type === "tool_execution_end") {
+    return { toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError };
+  }
+  return event;
+}
+
 function extractContent(message: any) {
   if (typeof message?.content === "string") return message.content;
   if (!Array.isArray(message?.content)) return "";
@@ -50,6 +68,11 @@ function extractContent(message: any) {
 }
 
 const server = createServer(async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   try {
     if (url.pathname === "/api/health") return sendJson(res, { ok: true, name: "Trading Pi", localFirst: true, sqlitePath: paths.sqlitePath, time: new Date().toISOString() });
@@ -66,6 +89,45 @@ const server = createServer(async (req, res) => {
       const body = await readBody(req);
       const result = await agent.prompt(body);
       return sendJson(res, result);
+    }
+
+    // ─── SSE streaming endpoint ───
+    if (url.pathname === "/api/session/message/stream" && req.method === "POST") {
+      const body = await readBody(req);
+      const { message, sessionId } = body as { message: string; sessionId?: string };
+
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.flushHeaders();
+
+      try {
+        const result = await agent.prompt({ message, sessionId }, (event) => {
+          try {
+            const data = JSON.stringify({ type: event.type, event: compactStreamEvent(event) });
+            res.write(`event: ${event.type}\ndata: ${data}\n\n`);
+          } catch { /* client may have disconnected */ }
+        });
+        const transformed = {
+          sessionId: result.sessionId,
+          text: result.text,
+          messages: (result.messages ?? []).map((m: any) => ({
+            id: m.id,
+            role: m.role ?? "assistant",
+            kind: "pi_message",
+            content: extractContent(m),
+            timestamp: m.timestamp ?? Date.now(),
+          })),
+        };
+        res.write(`event: done\ndata: ${JSON.stringify(transformed)}\n\n`);
+      } catch (err: any) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+      }
+      res.end();
+      return;
     }
     if (url.pathname === "/api/messages" && req.method === "GET") {
       const sessionId = url.searchParams.get("sessionId") ?? undefined;
@@ -109,3 +171,6 @@ const server = createServer(async (req, res) => {
 
 const port = Number(process.env.TRADING_PI_API_PORT ?? 8787);
 server.listen(port, () => console.log(`Trading Pi API listening on http://localhost:${port}`));
+
+process.on("uncaughtException", (err) => console.error("Uncaught:", err));
+process.on("unhandledRejection", (err) => console.error("Unhandled:", err));

@@ -1,73 +1,126 @@
-import { Button } from "@heroui/react/button";
-import { Card } from "@heroui/react/card";
 import { Chip } from "@heroui/react/chip";
-import { Tab, TabList, TabPanel, Tabs } from "@heroui/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { Tab, TabList, TabPanel, Tabs } from "@heroui/react/tabs";
 import { Clipboard, Download, Eye } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { tradingPiApi } from "../api/client.js";
 
-export function ArtifactPreviewPanel() {
-  const artifacts = (useQuery as any)({ queryKey: ["artifacts"], queryFn: tradingPiApi.artifacts });
-  const latest: any = artifacts.data?.[0];
-  const preview = useQuery({
-    queryKey: ["artifact-preview", latest?.id],
-    queryFn: async () => latest ? tradingPiApi.artifactPreview(latest.id) : undefined,
-    enabled: Boolean(latest?.id),
-  });
-  const copy = useMutation({
-    mutationFn: async () => {
-      const content = preview.data?.output.content ?? latest?.summary ?? "";
-      await navigator.clipboard.writeText(content);
-      return true;
-    },
-  });
+import { Artifact, ArtifactHeader, ArtifactTitle, ArtifactDescription, ArtifactActions, ArtifactAction, ArtifactContent } from "@/components/ai-elements/artifact.js";
 
-  if (!latest) return (
-    <Card className="artifactPreview heroPanel">
-      <Card.Header className="panelTitle"><Eye size={16} /> Artifact Preview</Card.Header>
-      <Card.Content><p className="empty">No artifact selected.</p></Card.Content>
-    </Card>
-  );
+export function ArtifactPreviewPanel() {
+  const [latest, setLatest] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Load the latest artifact (no preview auto-fetch)
+  useEffect(() => {
+    let cancelled = false;
+    tradingPiApi.artifacts().then((data: any) => {
+      if (cancelled) return;
+      const arr = data ?? [];
+      if (arr.length > 0) setLatest(arr[0]);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handlePreview = useCallback(async () => {
+    if (!latest) return;
+    setShowPreview(true);
+    try {
+      const data = await tradingPiApi.artifactPreview(latest.id);
+      setPreviewData(data);
+    } catch {
+      setPreviewData({ output: { content: latest.summary, contentType: latest.type } });
+    }
+  }, [latest]);
+
+  const handleCopy = useCallback(async () => {
+    const content = previewData?.output?.content ?? latest?.summary ?? "";
+    await navigator.clipboard.writeText(content);
+  }, [previewData, latest]);
+
+  if (!latest) {
+    return (
+      <Artifact>
+        <ArtifactHeader>
+          <ArtifactTitle><Eye size={16} /> Artifact Preview</ArtifactTitle>
+        </ArtifactHeader>
+        <ArtifactContent>
+          <p style={{ color: "#8da1b6", textAlign: "center", padding: "24px 0" }}>No artifact selected.</p>
+        </ArtifactContent>
+      </Artifact>
+    );
+  }
 
   return (
-    <Card className="artifactPreview heroPanel">
-      <Card.Header className="panelTitle"><Eye size={16} /> Artifact Preview</Card.Header>
-      <div className="previewMeta px-3 pb-2">
-        <strong>{latest.title}</strong>
-        <Chip size="sm" variant="flat" color={preview.data?.output.previewReady ? "success" : "warning"}>
-          {preview.data?.output.contentType ?? latest.type}
-        </Chip>
-      </div>
-      <Tabs aria-label="Artifact preview tabs" className="px-3">
-        <TabList>
-          <Tab key="markdown">Markdown</Tab>
-          <Tab key="html">HTML</Tab>
-          <Tab key="data">Data</Tab>
-          <Tab key="meta">Meta</Tab>
-        </TabList>
-        <TabPanel key="markdown">
-          <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2">{preview.data?.output.content ?? latest.summary}</pre>
-        </TabPanel>
-        <TabPanel key="html">
-          <div className="max-h-[56vh] overflow-auto p-2">
-            {String(preview.data?.output.contentType ?? "").includes("html") ? (
-              <iframe title="HTML preview" className="w-full min-h-[420px] border border-[#26384e] rounded-lg bg-white" sandbox="allow-same-origin" srcDoc={preview.data?.output.content ?? ""} />
-            ) : (
-              <pre className="font-mono text-sm">{JSON.stringify({ previewReady: preview.data?.output.previewReady, previewPayload: preview.data?.output.previewPayload }, null, 2)}</pre>
-            )}
+    <Artifact>
+      <ArtifactHeader>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Eye size={16} />
+          <div>
+            <ArtifactTitle>{latest.title}</ArtifactTitle>
+            <ArtifactDescription>
+              <Chip size="sm" variant="soft" color={previewData?.output?.previewReady ? "success" : "warning"}>
+                {previewData?.output?.contentType ?? latest.type}
+              </Chip>
+            </ArtifactDescription>
           </div>
-        </TabPanel>
-        <TabPanel key="data">
-          <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2">{JSON.stringify(latest, null, 2)}</pre>
-        </TabPanel>
-        <TabPanel key="meta">
-          <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2">{JSON.stringify(preview.data?.output.previewPayload ?? latest, null, 2)}</pre>
-        </TabPanel>
-      </Tabs>
-      <div className="flex gap-2 p-3">
-        <Button size="sm" variant="secondary" onPress={() => copy.mutate()}><Clipboard size={14} /> Copy</Button>
-        <Button size="sm" variant="secondary"><Download size={14} /> Export</Button>
-      </div>
-    </Card>
+        </div>
+        <ArtifactActions>
+          <ArtifactAction tooltip="Preview" onClick={handlePreview}>
+            <Eye size={14} />
+          </ArtifactAction>
+          <ArtifactAction tooltip="Copy" onClick={handleCopy}>
+            <Clipboard size={14} />
+          </ArtifactAction>
+        </ArtifactActions>
+      </ArtifactHeader>
+      {showPreview && (
+        <ArtifactContent style={{ padding: 0 }}>
+          <Tabs aria-label="Artifact preview tabs" className="px-3">
+            <TabList>
+            <Tab key="markdown" id="markdown" {...({ children: "Markdown" } as any)} />
+            <Tab key="html" id="html" {...({ children: "HTML" } as any)} />
+            <Tab key="data" id="data" {...({ children: "Data" } as any)} />
+            <Tab key="meta" id="meta" {...({ children: "Meta" } as any)} />
+            </TabList>
+            <TabPanel key="markdown">
+              <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2" style={{ color: "#d7e2ed" }}>
+                {previewData?.output?.content ?? latest.summary}
+              </pre>
+            </TabPanel>
+            <TabPanel key="html">
+              <div className="max-h-[56vh] overflow-auto p-2">
+                {String(previewData?.output?.contentType ?? "").includes("html") ? (
+                  <iframe
+                    title="HTML preview"
+                    className="w-full min-h-[420px] border border-[#26384e] rounded-lg bg-white"
+                    sandbox="allow-same-origin"
+                    srcDoc={previewData?.output?.content ?? ""}
+                  />
+                ) : (
+                  <pre className="font-mono text-sm" style={{ color: "#d7e2ed" }}>
+                    {JSON.stringify(
+                      { previewReady: previewData?.output?.previewReady, previewPayload: previewData?.output?.previewPayload },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                )}
+              </div>
+            </TabPanel>
+            <TabPanel key="data">
+              <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2" style={{ color: "#d7e2ed" }}>
+                {JSON.stringify(latest, null, 2)}
+              </pre>
+            </TabPanel>
+            <TabPanel key="meta">
+              <pre className="font-mono text-sm whitespace-pre-wrap max-h-[56vh] overflow-auto p-2" style={{ color: "#d7e2ed" }}>
+                {JSON.stringify(previewData?.output?.previewPayload ?? latest, null, 2)}
+              </pre>
+            </TabPanel>
+          </Tabs>
+        </ArtifactContent>
+      )}
+    </Artifact>
   );
 }

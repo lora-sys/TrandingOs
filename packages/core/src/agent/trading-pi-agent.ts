@@ -34,7 +34,10 @@ export class TradingPiAgent {
     },
   ) {}
 
-  async prompt(input: { message: string; sessionId?: string; parentSessionId?: string }) {
+  async prompt(
+    input: { message: string; sessionId?: string; parentSessionId?: string },
+    onStreamEvent?: (event: AgentEvent) => void,
+  ) {
     const session = input.parentSessionId
       ? this.deps.sessions.createFork(input.parentSessionId)
       : this.deps.sessions.ensureSession(input.sessionId);
@@ -128,7 +131,10 @@ export class TradingPiAgent {
         return undefined;
       },
     });
-    agent.subscribe((event: AgentEvent) => this.handleEvent(session.id, event));
+    agent.subscribe((event: AgentEvent) => {
+      this.handleEvent(session.id, event);
+      onStreamEvent?.(event);
+    });
     await agent.prompt(input.message);
 
     // Auto-compaction: check if context needs compaction and generate summary

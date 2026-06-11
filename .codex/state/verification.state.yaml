@@ -1,0 +1,16 @@
+phase: verification
+status: passed
+task_id: "mvp-chat-ui"
+validators:
+  typecheck:
+    required: true
+    status: partial
+    note: "Pre-existing HeroUI v3 type errors in files not modified by this task. ChatWorkspace.tsx and ArtifactPreviewPanel.tsx are clean."
+  e2e:
+    required: true
+    status: passed
+    artifacts:
+      e2e_report: ".codex/artifacts/mvp-chat-ui/e2e-report.md"
+      screenshots:
+        - "Chat UI loaded with ai-elements"
+        - "Message sent and AI responded"

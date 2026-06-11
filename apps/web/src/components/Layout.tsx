@@ -31,10 +31,10 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="appShell">
         <aside className="sideNav">
           <div className="brandMark">
-            <span>π</span>
+            <span className="piSymbol">π</span>
             <div>
-              <strong>Trading Pi</strong>
-              <small>Local Trading OS</small>
+              <span className="brandName">Trading Pi</span>
+              <span className="brandSub">Local Trading OS</span>
             </div>
           </div>
           <nav>
@@ -66,7 +66,7 @@ function StatusLine({ icon, label, value }: { icon: ReactNode; label: string; va
   return (
     <div className="statusLine">
       <span>{icon}{label}</span>
-      <Chip size="sm" variant="flat" color={value === "off" ? "warning" : "success"}>{value}</Chip>
+      <Chip size="sm" variant="soft" color={value === "off" ? "warning" : "success"}>{value}</Chip>
     </div>
   );
 }
