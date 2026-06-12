@@ -1,86 +1,27 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, ClipboardCopy, FileText, Eye, Download } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ClipboardCopy, MessageSquare, Share2, MoreHorizontal, Paperclip, Send, StopCircle, Search, FileText, TrendingUp, RefreshCw, Check, AlertCircle } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { tradingPiApi } from "../api/client.js";
-import type { Artifact, ChatMessage, TimelineEvent, Approval } from "../api/types.js";
+import type { ChatMessage, TimelineEvent } from "../api/types.js";
 import { useSession } from "./session.js";
 
-/* ─── ai-elements Conversation ─── */
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation.js";
-
-/* ─── ai-elements Message ─── */
-import {
-  Message,
-  MessageContent,
-  MessageActions,
-  MessageAction,
-  MessageResponse,
-} from "@/components/ai-elements/message.js";
-
-/* ─── ai-elements Tool ─── */
-import {
-  Tool,
-  ToolHeader,
-  ToolContent,
-  ToolInput,
-  ToolOutput,
-} from "@/components/ai-elements/tool.js";
-
-/* ─── ai-elements Sources ─── */
-import {
-  Sources,
-  SourcesTrigger,
-  SourcesContent,
-  Source,
-} from "@/components/ai-elements/sources.js";
-
-/* ─── ai-elements Confirmation ─── */
-import {
-  Confirmation,
-  ConfirmationTitle,
-  ConfirmationRequest,
-  ConfirmationAccepted,
-  ConfirmationActions,
-  ConfirmationAction,
-} from "@/components/ai-elements/confirmation.js";
-
-/* ─── ai-elements Artifact ─── */
-import {
-  Artifact as ArtifactRoot,
-  ArtifactHeader,
-  ArtifactTitle,
-  ArtifactDescription,
-  ArtifactActions as ArtifactActionsRow,
-  ArtifactAction,
-  ArtifactContent,
-} from "@/components/ai-elements/artifact.js";
-
-/* ─── ai-elements PromptInput ─── */
-import {
-  PromptInput,
-  PromptInputTextarea,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputSubmit,
-} from "@/components/ai-elements/prompt-input.js";
+import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "@/components/ai-elements/conversation.js";
+import { Message, MessageContent, MessageActions, MessageAction, MessageResponse } from "@/components/ai-elements/message.js";
+import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool.js";
+import { ChainOfThought, ChainOfThoughtContent, ChainOfThoughtHeader, ChainOfThoughtStep } from "@/components/ai-elements/chain-of-thought.js";
+import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning.js";
 
 /* ════════════════════════════════════════════════════
    Types & Helpers
    ════════════════════════════════════════════════════ */
 
-type RichTimeline = TimelineEvent & { payload: unknown };
+type RichTimeline = TimelineEvent & { payload: unknown; payload_json?: string };
 type ToolFrame = { call: RichTimeline; result?: RichTimeline | null };
 interface GroupedMsg {
   msg: ChatMessage;
   tools: ToolFrame[];
 }
 
-/** Pair consecutive tool events into (call, result) frames. */
 function pairTools(events: RichTimeline[]): ToolFrame[] {
   const out: ToolFrame[] = [];
   let i = 0;
@@ -103,20 +44,23 @@ function pairTools(events: RichTimeline[]): ToolFrame[] {
   return out;
 }
 
-/** Group tool events under their parent assistant message. */
 function groupTools(
   msgs: ChatMessage[],
   timeline: RichTimeline[],
 ): GroupedMsg[] {
+  // Filter out internal lifecycle events that shouldn't be shown as tool calls
   const toolEvts = timeline.filter(
     (e) =>
-      e.type?.startsWith("agent.tool.") ||
-      e.type?.startsWith("pi."),
+      (e.type?.startsWith("agent.tool.") || e.type?.startsWith("pi.")) &&
+      !["pi.turn_start", "pi.turn_end", "pi.message_start", "pi.message_end", "pi.message_update", "pi.error"].includes(e.type),
   );
   const groups: GroupedMsg[] = [];
   let ti = 0;
 
-  for (const msg of msgs) {
+  // Filter messages to only show user and assistant roles, excluding system/event messages
+  const visibleMsgs = msgs.filter(m => m.role === "user" || m.role === "assistant");
+
+  for (const msg of visibleMsgs) {
     const buf: RichTimeline[] = [];
     if (msg.role === "assistant" || msg.kind === "pi_message") {
       while (ti < toolEvts.length) {
@@ -130,28 +74,6 @@ function groupTools(
   return groups;
 }
 
-/** Extract source-like events from timeline (type =~ /source|url|web/) */
-function extractSources(timeline: RichTimeline[]): { title: string; url: string }[] {
-  return timeline
-    .filter((e) => /source|web_fetch|url/i.test(e.type) && e.payload)
-    .map((e) => {
-      const p = typeof e.payload === "object" && e.payload ? (e.payload as Record<string, unknown>) : {};
-      return { title: String(p.title ?? e.title ?? ""), url: String(p.url ?? "") };
-    })
-    .filter((s) => s.url.startsWith("http"));
-}
-
-/** Pick the most recent approval record that matches an "approval.request" event. */
-function findApprovalRequest(
-  timeline: RichTimeline[],
-  approvals: Approval[],
-): { approval: Approval; event: RichTimeline } | null {
-  const ev = timeline.findLast((e) => e.type === "approval.request" || e.type?.startsWith("pi.approval."));
-  if (!ev) return null;
-  const app = approvals.find((a) => ev.id?.includes(a.id) || a.id?.includes(ev.id));
-  return app ? { approval: app, event: ev } : null;
-}
-
 /* ════════════════════════════════════════════════════
    Main Component
    ════════════════════════════════════════════════════ */
@@ -163,57 +85,45 @@ export function ChatWorkspace() {
   const [streamingText, setStreamingText] = useState<string>("");
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   /* ─── Data ─── */
-  const { data: msgsData } = (useQuery as any)({
+  const { data: msgsData } = useQuery<{ messages: ChatMessage[] }>({
     queryKey: ["messages", sessionId],
     queryFn: () => tradingPiApi.messages(sessionId ?? ""),
     enabled: Boolean(sessionId),
   });
-  const { data: rawArtifacts } = (useQuery as any)({
-    queryKey: ["artifacts"],
-    queryFn: tradingPiApi.artifacts,
-  });
-  const { data: rawTimeline } = (useQuery as any)({
+  const { data: rawTimeline } = useQuery<TimelineEvent[]>({
     queryKey: ["timeline"],
     queryFn: tradingPiApi.timeline,
   });
-  const { data: rawApprovals } = (useQuery as any)({
-    queryKey: ["approvals"],
-    queryFn: tradingPiApi.approvals,
-  });
 
   const allMessages: ChatMessage[] = msgsData?.messages ?? [];
-  const allArtifacts: Artifact[] = rawArtifacts ?? [];
   const allTimeline: RichTimeline[] = rawTimeline ?? [];
-  const allApprovals: Approval[] = rawApprovals ?? [];
-
-  /* ─── streaming index tracking ─── */
 
   /* ─── grouped data ─── */
   const grouped = useMemo(() => groupTools(allMessages, allTimeline), [allMessages, allTimeline]);
-  const sources = useMemo(() => extractSources(allTimeline), [allTimeline]);
-  const approvalRequest = useMemo(() => findApprovalRequest(allTimeline, allApprovals), [allTimeline, allApprovals]);
 
   /* ─── SSE streaming logic ─── */
   const sseRef = useRef<EventTarget | null>(null);
 
-  const handleSubmit = async (message: { text: string }) => {
+  const handleSubmit = useCallback(async (message: { text: string; files?: File[] }) => {
     const trimmed = message.text.trim();
-    if (!trimmed) return;
+    if (!trimmed && (!message.files || message.files.length === 0)) return;
 
-    // Cancel any previous SSE
     sseRef.current = null;
     setStatus("submitted");
     setStreamingText("");
     setErrorMessage(null);
 
-    // Generate a temp ID for the streaming message
     const tempId = `stream-${Date.now()}`;
     setStreamingMsgId(tempId);
 
-    // Start SSE connection
-    const sse = tradingPiApi.sendMessageStream(trimmed, sessionId ?? undefined);
+    const sse = tradingPiApi.sendMessageStream(trimmed, sessionId ?? undefined, message.files);
     sseRef.current = sse;
 
     sse.addEventListener("message_update", ((e: CustomEvent) => {
@@ -224,9 +134,8 @@ export function ChatWorkspace() {
       }
     }) as EventListener);
 
-    sse.addEventListener("tool_execution_start", ((e: CustomEvent) => {
-      const { toolName, args } = e.detail;
-      // Timeline event will be picked up by polling
+    sse.addEventListener("artifact_update", ((e: CustomEvent) => {
+      window.dispatchEvent(new CustomEvent("pi:artifact_update", { detail: e.detail }));
     }) as EventListener);
 
     sse.addEventListener("done", ((e: CustomEvent) => {
@@ -234,19 +143,14 @@ export function ChatWorkspace() {
       setStreamingMsgId(null);
       setStreamingText("");
       setStatus("idle");
+      setInputValue("");
       if (result.sessionId) setSessionId(result.sessionId);
-      // Refresh all data from DB (includes timeline, artifacts)
       Promise.all([
         queryClient.invalidateQueries({ queryKey: ["messages"] }),
         queryClient.invalidateQueries({ queryKey: ["timeline"] }),
         queryClient.invalidateQueries({ queryKey: ["artifacts"] }),
+        queryClient.invalidateQueries({ queryKey: ["sessions"] }),
       ]);
-    }) as EventListener);
-
-    sse.addEventListener("agent_end", (() => {
-      setStreamingMsgId(null);
-      setStreamingText("");
-      setStatus("idle");
     }) as EventListener);
 
     sse.addEventListener("error", ((e: CustomEvent) => {
@@ -255,17 +159,88 @@ export function ChatWorkspace() {
       setStreamingText("");
       setErrorMessage(e.detail?.message || e.detail?.error || "Connection failed");
     }) as EventListener);
-  };
+  }, [sessionId, queryClient, setSessionId]);
 
-  /* Cleanup SSE on unmount */
   useEffect(() => {
     return () => { sseRef.current = null; };
   }, []);
 
-  const copyContent = useCallback(async (text: string) => {
+  /* ─── Global keyboard shortcut: Cmd+K → focus input ─── */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        const textarea = document.querySelector(".chatInputInner textarea") as HTMLTextAreaElement | null;
+        if (textarea) textarea.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const copyContent = useCallback(async (text: string, id: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1500);
     } catch { /* noop */ }
+  }, []);
+
+  const handleNewConversation = useCallback(() => {
+    setSessionId(undefined!);
+    setInputValue("");
+    setStreamingText("");
+    setStreamingMsgId(null);
+    setStatus("idle");
+  }, [setSessionId]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (inputValue.trim() || attachedFiles.length > 0) {
+        handleSubmit({ text: inputValue, files: attachedFiles });
+        setInputValue("");
+        setAttachedFiles([]);
+      }
+    }
+  }, [inputValue, attachedFiles, handleSubmit]);
+
+  const handleSendClick = useCallback(() => {
+    if (inputValue.trim() || attachedFiles.length > 0) {
+      handleSubmit({ text: inputValue, files: attachedFiles });
+      setInputValue("");
+      setAttachedFiles([]);
+    }
+  }, [inputValue, attachedFiles, handleSubmit]);
+
+  const handleStop = useCallback(() => {
+    if (sseRef.current && typeof (sseRef.current as any).abort === "function") {
+      (sseRef.current as any).abort();
+    }
+    sseRef.current = null;
+    setStreamingMsgId(null);
+    setStreamingText("");
+    setStatus("idle");
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setAttachedFiles(prev => [...prev, ...files]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const removeFile = useCallback((index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleAttachClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const autoResize = useCallback((el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    const maxHeight = 120;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
   }, []);
 
   /* ════════════════════════════════════════════════════
@@ -274,248 +249,231 @@ export function ChatWorkspace() {
 
   return (
     <section className="chatContainer">
-      {/* ────────── HEADER ────────── */}
+      {/* ─── Header ─── */}
       <header className="chatHeader">
-        <div>
-          <h1>
-            Trading Pi Agent
-            <span className={`statusBadge ${status === "idle" ? "idle" : status === "streaming" || status === "submitted" ? "streaming" : "error"}`}>
-              ● {status === "idle" ? "READY" : status === "streaming" ? "RUNNING" : status === "submitted" ? "SUBMITTED" : "ERROR"}
-            </span>
-          </h1>
-          <p>One core agent, Workflow + Skills, local artifacts, approval-first execution.</p>
-        </div>
-        <div className="commandHints">
-          {["/research ETH", "/plan ETH/USDT 100", "/review-day"].map((cmd) => (
-            <span key={cmd} className="commandHint">{cmd}</span>
-          ))}
+        <h1>
+          {grouped.length > 0 ? "对话" : "新建对话"}
+          <span className={`statusDot ${status === "idle" ? "idle" : status === "streaming" || status === "submitted" ? "streaming" : "error"}`} />
+        </h1>
+        <div className="chatHeader-actions">
+          <button onClick={handleNewConversation} aria-label="新建对话" title="新建对话"><MessageSquare size={13} /></button>
+          <button aria-label="分享对话" title="分享"><Share2 size={13} /></button>
+          <button aria-label="更多选项" title="更多"><MoreHorizontal size={13} /></button>
+          <kbd className="shortcutHint" title="Cmd+K 聚焦输入">⌘K</kbd>
         </div>
       </header>
 
       {/* ────────── CONVERSATION ────────── */}
-      <div className="conversationArea">
-      <Conversation>
-        <ConversationContent>
-          {grouped.map(({ msg, tools }) => {
-            const isAssistant = msg.role === "assistant";
-            // The streaming message is identified by its temp ID match or before SSE done
-            const isStreaming =
-              isAssistant &&
-              streamingMsgId !== null &&
-              status !== "idle" &&
-              ((msg.id === streamingMsgId) ||
-               (msg.id.startsWith("stream-")));
+      <div className="conversationArea" role="log" aria-label="对话消息列表" aria-live="polite">
+        <div aria-live="polite" aria-atomic="true" className="sr-only">
+          {status === "streaming" && "正在生成回复..."}
+          {status === "submitted" && "消息已发送，等待回复..."}
+          {status === "error" && `错误: ${errorMessage}`}
+        </div>
 
-            if (!isAssistant) {
-              /* ─ user message ─ */
+        <Conversation>
+          <ConversationContent>
+            {/* ─── Real messages from API ─── */}
+            {grouped.map(({ msg, tools }) => {
+              const isAssistant = msg.role === "assistant";
+              const isStreaming =
+                isAssistant &&
+                streamingMsgId !== null &&
+                status !== "idle" &&
+                ((msg.id === streamingMsgId) ||
+                 (msg.id.startsWith("stream-")));
+
+              if (!isAssistant) {
+                return (
+                  <Message key={msg.id} from="user" className="messageSlideIn">
+                    <MessageContent>
+                      {typeof msg.content === "string" ? msg.content : ""}
+                    </MessageContent>
+                    <MessageActions>
+                      <MessageAction tooltip={copiedId === `user-${msg.id}` ? "已复制" : "复制"} onClick={() => copyContent(typeof msg.content === "string" ? msg.content : "", `user-${msg.id}`)}>
+                        {copiedId === `user-${msg.id}` ? <Check size={14} className="copyCheckIcon" /> : <ClipboardCopy size={14} />}
+                      </MessageAction>
+                    </MessageActions>
+                  </Message>
+                );
+              }
+
+              const responseText = typeof msg.content === "string" ? msg.content : "";
+              const hasTools = tools.length > 0;
+
               return (
-                <Message key={msg.id} from="user">
+                <Message key={msg.id} from="assistant" className="messageSlideIn">
                   <MessageContent>
-                    <p
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        overflowWrap: "anywhere",
-                        fontFamily: '"Inter", system-ui, sans-serif',
-                        fontSize: "14px",
-                        lineHeight: "1.6",
-                        color: "#e5edf6",
-                      }}
-                    >
-                      {msg.content}
-                    </p>
+                    {hasTools && (
+                      <ChainOfThought defaultOpen={isStreaming}>
+                        <ChainOfThoughtHeader>查看思考过程与工具调用</ChainOfThoughtHeader>
+                        <ChainOfThoughtContent>
+                          {tools.map((pair, i) => {
+                            const isFailed = pair.result?.status === "failed";
+                            return (
+                              <ChainOfThoughtStep
+                                key={pair.call.id ?? `t${i}`}
+                                label={pair.call.title}
+                                status={pair.result ? "complete" : "active"}
+                                icon={isFailed ? AlertCircle : undefined}
+                                description={pair.call.detail}
+                              />
+                            );
+                          })}
+                        </ChainOfThoughtContent>
+                      </ChainOfThought>
+                    )}
+
+                    <MessageResponse isAnimating={isStreaming && streamingMsgId === msg.id}>
+                      {isStreaming && streamingMsgId === msg.id ? (
+                        <>{streamingText}<span className="streamingCursor" /></>
+                      ) : responseText}
+                    </MessageResponse>
+
+                    <MessageActions>
+                      <MessageAction tooltip={copiedId === `asst-${msg.id}` ? "已复制" : "复制"} onClick={() => copyContent(responseText, `asst-${msg.id}`)}>
+                        {copiedId === `asst-${msg.id}` ? <Check size={14} className="copyCheckIcon" /> : <ClipboardCopy size={14} />}
+                      </MessageAction>
+                      <MessageAction tooltip="分享">
+                        <Share2 size={14} />
+                      </MessageAction>
+                    </MessageActions>
                   </MessageContent>
                 </Message>
               );
-            }
+            })}
 
-            /* ─ assistant message ─ */
-            return (
-              <Message key={msg.id} from="assistant">
+            {/* ─── Streaming message ─── */}
+            {streamingMsgId && streamingText && (
+              <Message key={streamingMsgId} from="assistant" className="messageSlideIn">
                 <MessageContent>
-                  {/* AI response — mono font + streaming */}
-                  <div
-                    style={{
-                      fontFamily: '"JetBrains Mono", "Noto Sans SC", ui-monospace, monospace',
-                      fontSize: "14px",
-                      lineHeight: "1.7",
-                      color: "#e5edf6",
-                    }}
-                  >
-                    <MessageResponse isAnimating={isStreaming}>
-                      {msg.content}
-                    </MessageResponse>
-                  </div>
-
-                  {/* Tool calls inline */}
-                  {tools.length > 0 && (
-                    <div
-                      style={{
-                        marginTop: "14px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "6px",
-                      }}
-                    >
-                      {tools.map((pair, i) => (
-                        <ToolItem key={pair.call.id ?? `t${i}`} pair={pair} />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Message actions (hover) */}
-                  <MessageActions>
-                    <MessageAction
-                      tooltip="Copy response"
-                      onClick={() => copyContent(msg.content)}
-                    >
-                      <ClipboardCopy size={14} />
-                    </MessageAction>
-                  </MessageActions>
+                  <MessageResponse isAnimating={true}>
+                    <span className="streamingText">{streamingText}<span className="streamingCursor" /></span>
+                  </MessageResponse>
                 </MessageContent>
               </Message>
-            );
-          })}
+            )}
 
-          {/* ── Synthetic streaming message (not yet in DB) ── */}
-          {streamingMsgId && streamingText && status !== "idle" && (
-            <Message key={streamingMsgId} from="assistant">
-              <MessageContent>
-                <div
-                  style={{
-                    fontFamily: '"JetBrains Mono", "Noto Sans SC", ui-monospace, monospace',
-                    fontSize: "14px",
-                    lineHeight: "1.7",
-                    color: "#e5edf6",
-                  }}
-                >
-                  <MessageResponse isAnimating>
-                    {streamingText}
-                  </MessageResponse>
+            {/* ─── Typing indicator ─── */}
+            {status === "submitted" && (
+              <Message from="assistant">
+                <MessageContent>
+                  <TypingIndicator />
+                </MessageContent>
+              </Message>
+            )}
+
+            {/* ─── Error ─── */}
+            {status === "error" && errorMessage && (
+              <Message from="assistant">
+                <MessageContent>
+                  <div className="errorToast">
+                    <span>{errorMessage}</span>
+                  </div>
+                </MessageContent>
+              </Message>
+            )}
+
+            {/* ─── Empty state ─── */}
+            {grouped.length === 0 && !streamingMsgId && (
+              <ConversationEmptyState
+                title="开始你的交易会话"
+                description="向 Trading Pi 提问，或使用快捷操作开始"
+                icon={<MessageSquare size={28} />}
+              />
+            )}
+
+            {/* ─── Quick Actions ─── */}
+            {grouped.length === 0 && !streamingMsgId && (
+              <div className="quickActions">
+                <div className="quickActions-label">快捷操作</div>
+                <div className="quickActions-grid">
+                  <button className="quickActionBtn" style={{ animationDelay: "0ms" }} title="向 Trading Pi 提问任何市场研究问题" onClick={() => handleSubmit({ text: "帮我分析 ETH 现在值不值得买" })}>
+                    <Search size={16} />
+                    <span className="quickAction-title">研究分析</span>
+                    <span className="quickAction-desc">市场研究与分析</span>
+                  </button>
+                  <button className="quickActionBtn" style={{ animationDelay: "60ms" }} title="自动生成包含入场/止损/止盈的交易计划" onClick={() => handleSubmit({ text: "生成 ETH 交易计划" })}>
+                    <FileText size={16} />
+                    <span className="quickAction-title">制定计划</span>
+                    <span className="quickAction-desc">生成交易计划</span>
+                  </button>
+                  <button className="quickActionBtn" style={{ animationDelay: "120ms" }} title="在模拟环境中执行交易策略" onClick={() => handleSubmit({ text: "执行模拟交易" })}>
+                    <TrendingUp size={16} />
+                    <span className="quickAction-title">模拟交易</span>
+                    <span className="quickAction-desc">Paper Trading 执行</span>
+                  </button>
+                  <button className="quickActionBtn" style={{ animationDelay: "180ms" }} title="AI 自动复盘并给出改进建议" onClick={() => handleSubmit({ text: "帮我复盘今天的交易" })}>
+                    <RefreshCw size={16} />
+                    <span className="quickAction-title">自动复盘</span>
+                    <span className="quickAction-desc">AI 分析与改进建议</span>
+                  </button>
                 </div>
-              </MessageContent>
-            </Message>
-          )}
+              </div>
+            )}
+          </ConversationContent>
 
-          {/* ── Approval Request ── */}
-          {approvalRequest && (
-            <Confirmation
-              state={
-                approvalRequest.approval.status === "approved"
-                  ? "approval-responded"
-                  : approvalRequest.approval.status === "rejected"
-                    ? "output-denied"
-                    : "approval-requested"
-              }
-            >
-              <ConfirmationTitle>
-                {approvalRequest.approval.action} —{" "}
-                {approvalRequest.approval.reason}
-              </ConfirmationTitle>
-
-              <ConfirmationRequest>
-                <ConfirmationActions>
-                  <ConfirmationAction
-                    variant="default"
-                    onClick={() => {
-                      /* TODO: implement approve API */
-                    }}
-                  >
-                    Approve
-                  </ConfirmationAction>
-                  <ConfirmationAction
-                    variant="outline"
-                    onClick={() => {
-                      /* TODO: implement reject API */
-                    }}
-                  >
-                    Reject
-                  </ConfirmationAction>
-                </ConfirmationActions>
-              </ConfirmationRequest>
-
-              <ConfirmationAccepted>
-                <p style={{ color: "#22c55e", fontSize: "13px" }}>
-                  ✓ Approved
-                </p>
-              </ConfirmationAccepted>
-            </Confirmation>
-          )}
-
-          {/* ── Sources (from timeline data) ── */}
-          {sources.length > 0 && (
-            <Sources>
-              <SourcesTrigger count={sources.length} />
-              <SourcesContent>
-                {sources.map((src, i) => (
-                  <Source
-                    key={i}
-                    href={src.url}
-                    title={src.title || src.url}
-                  />
-                ))}
-              </SourcesContent>
-            </Sources>
-          )}
-
-          {/* ── Artifacts (proper Artifact component) ── */}
-          {allArtifacts.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-                marginTop: "8px",
-              }}
-            >
-              <p
-                style={{
-                  color: "#8da1b6",
-                  fontSize: "11px",
-                  fontFamily: '"JetBrains Mono", monospace',
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                }}
-              >
-                Artifacts
-              </p>
-              {allArtifacts.slice(0, 4).map((art) => (
-                <ArtifactCard key={art.id} artifact={art} />
-              ))}
-            </div>
-          )}
-        </ConversationContent>
-
-        {grouped.length === 0 && (
-          <ConversationEmptyState
-            title="Start your trading session"
-            description="Ask Trading Pi or run /research, /plan, /review-day..."
-            icon={<Bot size={28} />}
-          />
-        )}
-
-        <ConversationScrollButton />
-      </Conversation>
+          <ConversationScrollButton />
+        </Conversation>
       </div>
 
       {/* ────────── INPUT ────────── */}
       <div className="chatInput">
-        <PromptInput onSubmit={handleSubmit}>
-          <PromptInputBody>
-            <PromptInputTextarea placeholder="Ask Trading Pi or run /research, /plan, /review-day..." />
-          </PromptInputBody>
-          <PromptInputFooter>
-            <div />
-            <PromptInputSubmit
-              status={
-                status === "submitted"
-                  ? "submitted"
-                  : status === "error"
-                    ? "error"
-                    : undefined
-              }
-            />
-          </PromptInputFooter>
-        </PromptInput>
+        <div className="chatInputInner">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,video/*"
+            className="fileInputHidden"
+            onChange={handleFileSelect}
+          />
+          <button className="attachBtn" title="添加附件" aria-label="添加附件" onClick={handleAttachClick}>
+            <Paperclip size={16} />
+          </button>
+          <textarea
+            ref={textareaRef}
+            value={inputValue}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              autoResize(e.target);
+            }}
+            placeholder="输入你的问题或任务... (⌘K 聚焦)"
+            aria-label="输入你的问题或任务"
+            rows={1}
+            onKeyDown={handleKeyDown}
+          />
+          {attachedFiles.length > 0 && (
+            <div className="attachedFiles">
+              {attachedFiles.map((file, i) => (
+                <div key={`${file.name}-${i}`} className="attachedFile entering">
+                  <span>{file.name}</span>
+                  <button onClick={() => removeFile(i)} aria-label="移除附件">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {status === "streaming" || status === "submitted" ? (
+            <button
+              className="stopBtn"
+              onClick={handleStop}
+              aria-label="停止生成"
+              title="停止"
+            >
+              <StopCircle size={18} />
+            </button>
+          ) : (
+            <button
+              className={`sendBtn ${(inputValue.trim() || attachedFiles.length > 0) ? "pulse" : ""}`}
+              onClick={handleSendClick}
+              disabled={(!inputValue.trim() && attachedFiles.length === 0) || status !== "idle"}
+              aria-label="发送消息"
+              title="发送"
+            >
+              <Send size={14} />
+            </button>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -525,8 +483,18 @@ export function ChatWorkspace() {
    Sub-components
    ════════════════════════════════════════════════════ */
 
-/* ─── Tool Item ─── */
-function ToolItem({ pair }: { pair: ToolFrame }) {
+const TypingIndicator = memo(function TypingIndicator() {
+  return (
+    <div className="typingIndicator">
+      <span className="dot" />
+      <span className="dot" />
+      <span className="dot" />
+      <span className="typingText">Trading Pi 正在思考...</span>
+    </div>
+  );
+});
+
+const ToolItem = memo(function ToolItem({ pair }: { pair: ToolFrame }) {
   const typeClean = pair.call.type
     .replace(/^agent\.tool\./, "")
     .replace(/^pi\./, "");
@@ -537,79 +505,75 @@ function ToolItem({ pair }: { pair: ToolFrame }) {
       : "output-available"
     : "input-available";
 
+  const payload = pair.call.payload as any;
+  const resultPayload = pair.result?.payload as any;
+  const toolName = payload?.toolName || payload?.name || typeClean;
+
+  const getOutputSummary = () => {
+    if (!done) return null;
+    if (pair.result!.status === "failed") {
+      return <div className="toolOutputSummary error">执行失败</div>;
+    }
+    if (!resultPayload) return null;
+    
+    if (toolName.includes("market") || toolName.includes("fetchTicker") || toolName.includes("ccxt")) {
+      const data = resultPayload;
+      if (data?.priceUsd || data?.last) {
+        return (
+          <div className="toolOutputSummary">
+            <span className="toolSummaryLabel">价格</span>
+            <span className="toolSummaryValue">${(data.priceUsd || data.last || 0).toFixed(2)}</span>
+          </div>
+        );
+      }
+      if (data?.symbol) {
+        return (
+          <div className="toolOutputSummary">
+            <span className="toolSummaryLabel">{data.symbol}</span>
+            <span className="toolSummaryValue">{data.exchange || 'market'}</span>
+          </div>
+        );
+      }
+    }
+    
+    if (toolName.includes("search") || toolName.includes("radar")) {
+      const results = resultPayload?.results || resultPayload?.opportunities || [];
+      return (
+        <div className="toolOutputSummary">
+          <span className="toolSummaryLabel">结果</span>
+          <span className="toolSummaryValue">{Array.isArray(results) ? results.length : 0} 条</span>
+        </div>
+      );
+    }
+    
+    if (toolName.includes("memory")) {
+      return (
+        <div className="toolOutputSummary">
+          <span className="toolSummaryLabel">记忆</span>
+          <span className="toolSummaryValue">已查询</span>
+        </div>
+      );
+    }
+    
+    return (
+      <details className="toolOutputDetails">
+        <summary>查看详细结果</summary>
+        <pre>{JSON.stringify(resultPayload, null, 2)}</pre>
+      </details>
+    );
+  };
+
   return (
     <Tool defaultOpen={!done}>
-      <ToolHeader title={pair.call.title} type={"tool-call" as const} state={state} />
+      <ToolHeader title={pair.call.title || toolName} type={"tool-call" as const} state={state} />
       <ToolContent>
-        {pair.call.payload && <ToolInput input={pair.call.payload as any} />}
-        {done && (
-          <ToolOutput
-            output={pair.result!.payload as any}
-            errorText={pair.result!.status === "failed" ? pair.result!.title : undefined}
-          />
-        )}
+        {done && getOutputSummary()}
         {!done && pair.call.status === "running" && (
           <div className="toolRunning">
-            Running {typeClean}…
+            执行中...
           </div>
         )}
       </ToolContent>
     </Tool>
   );
-}
-
-/* ─── ArtifactCard using ai-elements Artifact ─── */
-function ArtifactCard({ artifact }: { artifact: Artifact }) {
-  return (
-    <ArtifactRoot
-      style={{
-        border: "1px solid #305842",
-        background: "rgba(15, 29, 24, 0.85)",
-        borderRadius: "10px",
-      }}
-    >
-      <ArtifactHeader>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <FileText size={16} style={{ color: "#22c55e", opacity: 0.8 }} />
-          <div>
-            <ArtifactTitle>{artifact.title}</ArtifactTitle>
-            <ArtifactDescription>
-              <span
-                style={{
-                  fontSize: "11px",
-                  padding: "2px 7px",
-                  borderRadius: "5px",
-                  background: "rgba(34, 197, 94, 0.12)",
-                  color: "#22c55e",
-                  fontFamily: '"JetBrains Mono", monospace',
-                }}
-              >
-                {artifact.type}
-              </span>
-            </ArtifactDescription>
-          </div>
-        </div>
-        <ArtifactActionsRow>
-          <ArtifactAction tooltip="Preview">
-            <Eye size={14} />
-          </ArtifactAction>
-          <ArtifactAction tooltip="Copy">
-            <Download size={14} />
-          </ArtifactAction>
-        </ArtifactActionsRow>
-      </ArtifactHeader>
-      <ArtifactContent>
-        <p
-          style={{
-            color: "#d7e2ed",
-            fontSize: "13px",
-            lineHeight: "1.55",
-            overflowWrap: "anywhere",
-          }}
-        >
-          {artifact.summary}
-        </p>
-      </ArtifactContent>
-    </ArtifactRoot>
-  );
-}
+});

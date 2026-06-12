@@ -39,12 +39,12 @@ export class SessionStore {
       | undefined;
   }
 
-  ensureSession(sessionId?: string) {
+  ensureSession(sessionId?: string, name?: string) {
     if (sessionId) {
       const session = this.getSession(sessionId);
       if (session) return session;
     }
-    return this.createSession();
+    return this.createSession(name || "Trading Pi Session");
   }
 
   append(sessionId: string, type: string, data: unknown) {
@@ -72,6 +72,10 @@ export class SessionStore {
       .filter(Boolean)
       .map((line) => JSON.parse(line))
       .filter((entry) => entry.type !== "session");
+  }
+
+  updateSessionName(sessionId: string, name: string) {
+    this.repos.db.prepare("UPDATE sessions SET name = ? WHERE id = ?").run(name, sessionId);
   }
 
   createFork(parentSessionId: string): { id: string; name: string; path: string; createdAt: string; parentSessionId: string } {

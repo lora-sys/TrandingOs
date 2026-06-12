@@ -301,57 +301,64 @@ export class Repositories {
     sourcePlanArtifactId?: string;
     payload?: unknown;
   }) {
-    const timestamp = nowIso();
-    const orderId = id("ord");
-    const tradeId = id("trd");
-    const symbol = input.symbol.toUpperCase();
-    this.db.prepare(`
-      INSERT INTO orders
-      (id, session_id, symbol, side, order_type, quantity, price, status, mode, source_plan_artifact_id, payload_json, created_at, filled_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'filled', 'paper', ?, ?, ?, ?)
-    `).run(
-      orderId,
-      input.sessionId ?? null,
-      symbol,
-      input.side,
-      input.orderType ?? "market",
-      input.quantity,
-      input.price,
-      input.sourcePlanArtifactId ?? null,
-      JSON.stringify(input.payload ?? {}),
-      timestamp,
-      timestamp,
-    );
-    this.db.prepare(`
-      INSERT INTO trades
-      (id, order_id, session_id, symbol, side, quantity, entry_price, pnl, status, opened_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'open', ?)
-    `).run(tradeId, orderId, input.sessionId ?? null, symbol, input.side, input.quantity, input.price, timestamp);
-    const sign = input.side === "buy" ? 1 : -1;
-    const existing = this.db.prepare("SELECT * FROM positions WHERE symbol = ?").get(symbol) as
-      | { quantity: number; avg_price: number; realized_pnl: number }
-      | undefined;
-    const nextQuantity = (existing?.quantity ?? 0) + sign * input.quantity;
-    const nextAvg =
-      !existing || existing.quantity === 0
-        ? input.price
-        : Math.abs((existing.quantity * existing.avg_price + sign * input.quantity * input.price) / (nextQuantity || 1));
-    this.db.prepare(`
-      INSERT INTO positions (symbol, quantity, avg_price, realized_pnl, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(symbol) DO UPDATE SET
-        quantity=excluded.quantity,
-        avg_price=excluded.avg_price,
-        updated_at=excluded.updated_at
-    `).run(symbol, nextQuantity, nextAvg, existing?.realized_pnl ?? 0, timestamp);
-    this.createTimeline({
-      sessionId: input.sessionId,
-      type: "paper.order",
-      title: `Paper order filled: ${input.side.toUpperCase()} ${symbol}`,
-      status: "completed",
-      payload: { orderId, tradeId, mode: "paper", quantity: input.quantity, price: input.price },
-    });
-    return { orderId, tradeId, mode: "paper", status: "filled" };
+    this.db.exec("BEGIN TRANSACTION;");
+    try {
+      const timestamp = nowIso();
+      const orderId = id("ord");
+      const tradeId = id("trd");
+      const symbol = input.symbol.toUpperCase();
+      this.db.prepare(`
+        INSERT INTO orders
+        (id, session_id, symbol, side, order_type, quantity, price, status, mode, source_plan_artifact_id, payload_json, created_at, filled_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'filled', 'paper', ?, ?, ?, ?)
+      `).run(
+        orderId,
+        input.sessionId ?? null,
+        symbol,
+        input.side,
+        input.orderType ?? "market",
+        input.quantity,
+        input.price,
+        input.sourcePlanArtifactId ?? null,
+        JSON.stringify(input.payload ?? {}),
+        timestamp,
+        timestamp,
+      );
+      this.db.prepare(`
+        INSERT INTO trades
+        (id, order_id, session_id, symbol, side, quantity, entry_price, pnl, status, opened_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'open', ?)
+      `).run(tradeId, orderId, input.sessionId ?? null, symbol, input.side, input.quantity, input.price, timestamp);
+      const sign = input.side === "buy" ? 1 : -1;
+      const existing = this.db.prepare("SELECT * FROM positions WHERE symbol = ?").get(symbol) as
+        | { quantity: number; avg_price: number; realized_pnl: number }
+        | undefined;
+      const nextQuantity = (existing?.quantity ?? 0) + sign * input.quantity;
+      const nextAvg =
+        !existing || existing.quantity === 0
+          ? input.price
+          : Math.abs((existing.quantity * existing.avg_price + sign * input.quantity * input.price) / (nextQuantity || 1));
+      this.db.prepare(`
+        INSERT INTO positions (symbol, quantity, avg_price, realized_pnl, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(symbol) DO UPDATE SET
+          quantity=excluded.quantity,
+          avg_price=excluded.avg_price,
+          updated_at=excluded.updated_at
+      `).run(symbol, nextQuantity, nextAvg, existing?.realized_pnl ?? 0, timestamp);
+      this.createTimeline({
+        sessionId: input.sessionId,
+        type: "paper.order",
+        title: `Paper order filled: ${input.side.toUpperCase()} ${symbol}`,
+        status: "completed",
+        payload: { orderId, tradeId, mode: "paper", quantity: input.quantity, price: input.price },
+      });
+      this.db.exec("COMMIT;");
+      return { orderId, tradeId, mode: "paper", status: "filled" as const };
+    } catch (err) {
+      this.db.exec("ROLLBACK;");
+      throw err;
+    }
   }
 
   updateApprovalStatus(id: string, status: string) {
@@ -672,5 +679,107 @@ export class Repositories {
       ruleBreaks,
       disciplineScore: avgDiscipline,
     };
+  }
+
+  // Market Prices
+  async upsertMarketPrice(data: { symbol: string; exchange?: string; source: string; price_usd?: number; change_24h?: number; bid?: number; ask?: number; last?: number; high?: number; low?: number; volume?: number; extra_json?: string }) {
+    const priceId = `mp_${data.symbol}_${data.source}`;
+    const fetchedAt = nowIso();
+    this.db.prepare(`
+      INSERT INTO market_prices (id, symbol, exchange, source, price_usd, change_24h, bid, ask, last, high, low, volume, extra_json, fetched_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        symbol=excluded.symbol, exchange=excluded.exchange, source=excluded.source,
+        price_usd=excluded.price_usd, change_24h=excluded.change_24h, bid=excluded.bid,
+        ask=excluded.ask, last=excluded.last, high=excluded.high, low=excluded.low,
+        volume=excluded.volume, extra_json=excluded.extra_json, fetched_at=excluded.fetched_at
+    `).run(
+      priceId,
+      data.symbol,
+      data.exchange ?? null,
+      data.source,
+      data.price_usd ?? null,
+      data.change_24h ?? null,
+      data.bid ?? null,
+      data.ask ?? null,
+      data.last ?? null,
+      data.high ?? null,
+      data.low ?? null,
+      data.volume ?? null,
+      data.extra_json ?? null,
+      fetchedAt,
+    );
+    return priceId;
+  }
+
+  async getLatestMarketPrice(symbol: string, source?: string): Promise<any | null> {
+    const query = source
+      ? "SELECT * FROM market_prices WHERE symbol = ? AND source = ? ORDER BY fetched_at DESC LIMIT 1"
+      : "SELECT * FROM market_prices WHERE symbol = ? ORDER BY fetched_at DESC LIMIT 1";
+    const params = source ? [symbol, source] : [symbol];
+    return this.db.prepare(query).get(...params) ?? null;
+  }
+
+  async listMarketPrices(symbol: string): Promise<any[]> {
+    return this.db.prepare("SELECT * FROM market_prices WHERE symbol = ? ORDER BY fetched_at DESC LIMIT 50").all(symbol);
+  }
+
+  // OHLCV
+  async upsertOhlcvCandles(candles: Array<{ symbol: string; exchange?: string; timeframe: string; timestamp: number; open: number; high: number; low: number; close: number; volume?: number }>) {
+    const fetchedAt = nowIso();
+    const insert = this.db.prepare(`
+      INSERT INTO market_ohlcv (id, symbol, exchange, timeframe, timestamp, open, high, low, close, volume, fetched_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        symbol=excluded.symbol, exchange=excluded.exchange, timeframe=excluded.timeframe,
+        timestamp=excluded.timestamp, open=excluded.open, high=excluded.high,
+        low=excluded.low, close=excluded.close, volume=excluded.volume, fetched_at=excluded.fetched_at
+    `);
+    for (const row of candles) {
+      const candleId = `ohlcv_${row.symbol}_${row.timeframe}_${row.timestamp}`;
+      insert.run(
+        candleId,
+        row.symbol,
+        row.exchange ?? null,
+        row.timeframe,
+        row.timestamp,
+        row.open,
+        row.high,
+        row.low,
+        row.close,
+        row.volume ?? 0,
+        fetchedAt,
+      );
+    }
+  }
+
+  async getOhlcvCandles(symbol: string, timeframe: string, limit?: number): Promise<any[]> {
+    const rows = this.db.prepare(
+      "SELECT * FROM market_ohlcv WHERE symbol = ? AND timeframe = ? ORDER BY timestamp DESC LIMIT ?"
+    ).all(symbol, timeframe, limit ?? 100) as any[];
+    return rows;
+  }
+
+  // Search Cache
+  async getCachedSearchResults(query: string, provider: string): Promise<any | null> {
+    const row = this.db.prepare(
+      "SELECT * FROM search_cache WHERE query = ? AND provider = ? ORDER BY fetched_at DESC LIMIT 1"
+    ).get(query, provider) as any | undefined;
+    if (!row) return null;
+    if (row.expires_at && Date.parse(row.expires_at) < Date.now()) return null;
+    return { ...row, results: JSON.parse(row.results_json) };
+  }
+
+  async cacheSearchResults(query: string, provider: string, results: any, ttlMinutes?: number) {
+    const cacheId = id("sc");
+    const fetchedAt = nowIso();
+    const expiresAt = ttlMinutes ? new Date(Date.now() + ttlMinutes * 60_000).toISOString() : null;
+    this.db.prepare(`
+      INSERT INTO search_cache (id, query, provider, results_json, fetched_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        query=excluded.query, provider=excluded.provider, results_json=excluded.results_json,
+        fetched_at=excluded.fetched_at, expires_at=excluded.expires_at
+    `).run(cacheId, query, provider, JSON.stringify(results), fetchedAt, expiresAt);
   }
 }

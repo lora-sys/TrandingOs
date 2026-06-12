@@ -58,14 +58,35 @@ function compactStreamEvent(event: any) {
   if (event.type === "tool_execution_end") {
     return { toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError };
   }
+  if (event.type === "artifact_update") {
+    return { artifactId: event.artifactId, content: event.content, title: event.title };
+  }
   return event;
 }
 
 function extractContent(message: any) {
-  if (typeof message?.content === "string") return message.content;
-  if (!Array.isArray(message?.content)) return "";
-  return message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+  if (!message || !message.content) return "";
+
+  let text = "";
+  if (typeof message.content === "string") {
+    text = message.content;
+  } else if (Array.isArray(message.content)) {
+    text = message.content
+      .filter((b: any) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("");
+  }
+
+  // Aggressively remove common JSON patterns that leak from tool-using models
+  return text
+    .replace(/```json[\s\S]*?```/g, "") // Remove JSON code blocks
+    .replace(/\{[\s\n]*"action"[\s\S]*?\}/g, "") // Remove raw action JSON
+    .replace(/\{[\s\n]*"tool"[\s\S]*?\}/g, "") // Remove raw tool JSON
+    .replace(/\{[\s\n]*"type"[\s\n]*:[\s\n]*"artifact"[\s\S]*?\}/g, "") // Remove artifact JSON
+    .trim();
 }
+
+let agentStatus: "idle" | "running" = "idle";
 
 const server = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -76,7 +97,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   try {
     if (url.pathname === "/api/health") return sendJson(res, { ok: true, name: "Trading Pi", localFirst: true, sqlitePath: paths.sqlitePath, time: new Date().toISOString() });
-    if (url.pathname === "/api/status") return sendJson(res, { skills: skills.list().length, workflows: workflows.list().length, langfuseConfigured: telemetry.configured, paths });
+    if (url.pathname === "/api/status") return sendJson(res, { status: agentStatus, skills: skills.list().length, workflows: workflows.list().length, langfuseConfigured: telemetry.configured, paths });
     if (url.pathname === "/api/skills" && req.method === "GET") return sendJson(res, skills.list());
     if (url.pathname === "/api/workflows" && req.method === "GET") return sendJson(res, workflows.list());
     if (url.pathname === "/api/timeline" && req.method === "GET") return sendJson(res, repos.list("timeline_events"));
@@ -104,6 +125,7 @@ const server = createServer(async (req, res) => {
       });
       res.flushHeaders();
 
+      agentStatus = "running";
       try {
         const result = await agent.prompt({ message, sessionId }, (event) => {
           try {
@@ -111,6 +133,14 @@ const server = createServer(async (req, res) => {
             res.write(`event: ${event.type}\ndata: ${data}\n\n`);
           } catch { /* client may have disconnected */ }
         });
+
+        // Auto-update session name if it was a new session or still has the default name
+        const existingSession = sessions.getSession(result.sessionId);
+        if (existingSession && (existingSession.name === "Trading Pi Session" || existingSession.name === "新对话")) {
+          const newName = message.slice(0, 40).replace(/[^\w\u4e00-\u9fff\s]/g, "").trim() || "新对话";
+          sessions.updateSessionName(result.sessionId, newName);
+        }
+
         const transformed = {
           sessionId: result.sessionId,
           text: result.text,
@@ -125,6 +155,8 @@ const server = createServer(async (req, res) => {
         res.write(`event: done\ndata: ${JSON.stringify(transformed)}\n\n`);
       } catch (err: any) {
         res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+      } finally {
+        agentStatus = "idle";
       }
       res.end();
       return;
@@ -157,10 +189,38 @@ const server = createServer(async (req, res) => {
       const result = await skills.get("journal.entry.create").execute(body.input ?? body, { env, repos, artifacts, approvals, memory, sessionId: session.id });
       return sendJson(res, { sessionId: session.id, ...result });
     }
+    if (url.pathname === "/api/market/ohlcv" && req.method === "GET") {
+      const symbol = url.searchParams.get("symbol") ?? "ETH/USDT";
+      const timeframe = url.searchParams.get("timeframe") ?? "1d";
+      const limit = Number(url.searchParams.get("limit") ?? 120);
+      try {
+        const result = await skills.get("market.ccxt.ohlcv").execute({ symbol, timeframe, limit }, { env, repos, artifacts, approvals, memory, sessionId: "" });
+        return sendJson(res, result.rows);
+      } catch (err: any) {
+        return sendJson(res, { rows: [], error: err.message, symbol, timeframe, limit }, 200);
+      }
+    }
     if (url.pathname === "/api/portfolio" && req.method === "GET") return sendJson(res, repos.portfolioSnapshot());
-    if (url.pathname === "/api/trades" && req.method === "GET") return sendJson(res, repos.list("trades"));
+    if (url.pathname === "/api/trades" && req.method === "GET") {
+      try {
+        return sendJson(res, repos.list("trades"));
+      } catch {
+        // trades table has no created_at column, fall back to opened_at
+        return sendJson(res, repos.db.prepare("SELECT * FROM trades ORDER BY opened_at DESC LIMIT 100").all());
+      }
+    }
     if (url.pathname === "/api/reviews" && req.method === "GET") return sendJson(res, repos.list("reviews"));
     if (url.pathname === "/api/strategies" && req.method === "GET") return sendJson(res, repos.list("strategies"));
+
+    if (url.pathname === "/api/memory" && req.method === "GET") return sendJson(res, memory.list());
+    if (url.pathname === "/api/memory/query" && req.method === "POST") {
+      const body = await readBody(req);
+      return sendJson(res, memory.query(body));
+    }
+    if (url.pathname === "/api/memory/write" && req.method === "POST") {
+      const body = await readBody(req);
+      return sendJson(res, memory.write(body));
+    }
 
     if (url.pathname.startsWith("/api/")) return sendJson(res, { error: "Not found" }, 404);
     return sendJson(res, { ok: true, message: "Trading Pi API" });

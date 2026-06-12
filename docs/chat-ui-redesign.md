@@ -1,148 +1,176 @@
-# Trading Pi OS — UI/UX 完整设计规范
+# Trading Pi OS — MVP UI/UX 设计规范
 
-## 设计方向：交易终端精密感
+> 基于 `images/mvp.png` 概念图 + `tests/mvp.md` MVP 规格
 
-**灵感来源**：专业交易终端（Bloomberg Terminal、TradingView）的暗色界面 × AI 聊天的流动性。
+## 设计哲学
 
-**记忆点**：AI 回复以等宽字体像终端输出一样逐字出现，每个 agent 动作都有清晰的视觉状态。
+**Claude 的简洁 × 交易终端的精密**
+
+让一个完全不会交易的人，第一次打开 Trading Pi，就能完成一次完整的"研究 → 计划 → 模拟 → 复盘"闭环。
 
 ## 布局架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Sidebar (210px)  │  Chat Workspace (1fr, max 900px)   │ Inspector (320px) │
-│  ──────────────── │  ───────────────────────────────    │ ────────────────  │
-│  π 品牌标识       │  ┌─ Header ────────────────────┐   │ Timeline 事件流   │
-│  导航菜单          │  │ Trading Pi Agent  ● READY   │   │ Skills 技能列表   │
-│  Chat             │  │ Command hints: /research     │   │ Approvals 审批    │
-│  Workspaces       │  └─────────────────────────────┘   │ Runtime 状态      │
-│  Market           │  ┌─ Conversation ──────────────┐   │ Artifact 预览     │
-│  Research         │  │  (sticky-scroll 对话区)      │   │                   │
-│  Planner          │  │                              │   │                   │
-│  Portfolio        │  │  User Message ──────────►   │   │                   │
-│  Journal          │  │                              │   │                   │
-│  Review           │  │  ◄── Assistant Message       │   │                   │
-│  Evolution        │  │      等宽字体流式输出        │   │                   │
-│  Marketplace      │  │      ┌─ Tool Call ──┐       │   │                   │
-│  Beginner         │  │      │ ▼ research  │       │   │                   │
-│  System           │  │      └──────────────┘       │   │                   │
-│  Settings         │  │                              │   │                   │
-│                   │  └─────────────────────────────┘   │                   │
-│  SQLite ● local   │  ┌─ Input ────────────────────┐   │                   │
-│  Langfuse ● on    │  │  Ask Trading Pi or /cmd…   │   │                   │
-│  Sandbox  ● off   │  │                     [→]    │   │                   │
-│                   │  └─────────────────────────────┘   │                   │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Sidebar      │  Chat Workspace (主角)      │  Panel (可折叠) │
+│  ───────────  │  ────────────────────────   │  ────────────  │
+│  π 标识        │  ┌─ Header ────────────┐   │  Artifact     │
+│               │  │ Trading Pi  ● idle   │   │  Preview      │
+│  Chat ◄       │  └─────────────────────┘   │  (Markdown)    │
+│  Research     │  ┌─ Conversation ──────┐   │               │
+│  Portfolio    │  │                     │   │  Timeline     │
+│  Journal      │  │  User →             │   │  (agent 运行  │
+│  Review       │  │                     │   │   期间显示)   │
+│  Settings     │  │  ← Assistant (mono) │   │               │
+│               │  │                     │   │               │
+│               │  │  ┌─ Tool Call ──┐   │   │               │
+│               │  │  │ fetchTicker  │   │   │               │
+│               │  │  └──────────────┘   │   │               │
+│               │  └─────────────────────┘   │               │
+│               │  ┌─ Input ────────────┐   │               │
+│               │  │  /research ETH    →│   │               │
+│               │  └─────────────────────┘   │               │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### 核心原则
+
+| 原则 | 说明 |
+|------|------|
+| **Chat is King** | 聊天区占 60%+ 可视面积，header 极简，对话最大化 |
+| **信息分层** | 用户消息 / AI 回复 / 工具调用 / 系统事件，视觉层级分明 |
+| **面板即服务** | 右侧 panel 默认折叠，artifact 生成后自动展开 |
+| **最小噪音** | 无冗余文字、无多余卡片、无不需要的边框 |
+| **终端质感** | 暗色、等宽字体、圆点状态指示器、精密间距 |
 
 ## 色彩系统
 
 ```css
-/* 基础色板 */
---bg-primary:     #080b10;      /* 主背景 - 极深 */
---bg-surface:     rgba(12,19,32,.86);  /* 卡片表面 */
---bg-elevated:    rgba(18,28,45,.92);  /* 悬浮/激活 */
---bg-input:       rgba(11,17,29,.92);  /* 输入框 */
---bg-user-msg:    rgba(20,34,53,1);    /* 用户消息气泡 */
+/* 极简暗色板 — 只有真正需要的地方才有颜色 */
+--bg-app:         #080b10;      /* 应用背景 */
+--bg-sidebar:     #0c131c;      /* 侧栏 */
+--bg-chat:        #080b10;      /* 聊天区 */
+--bg-surface:     #0f1722;      /* 卡片/面板 */
+--bg-hover:       #162033;      /* 悬浮状态 */
+--bg-user-msg:    #1a2d42;      /* 用户消息气泡 */
 
---border-default: #1d2a3b;      /* 默认边框 */
---border-hover:   #2a3d57;      /* 悬浮边框 */
---border-active:  #22d3ee;      /* 激活边框 (cyan) */
+--border:         rgba(255,255,255,.06);  /* 极淡边框 */
+--border-strong:  rgba(255,255,255,.10);  /* 强调边框 */
 
---text-primary:   #e5edf6;      /* 主文字 */
---text-secondary: #8da1b6;      /* 次要文字 */
---text-muted:     #5a6f85;      /* 禁用/占位文字 */
+--text-primary:   #e8edf5;      /* 主文字 */
+--text-secondary: #8899b0;      /* 次要文字 */
+--text-muted:     #556677;      /* 禁用/占位 */
 
---accent-cyan:    #22d3ee;      /* 主强调色 - 信息/运行中 */
---accent-emerald: #22c55e;      /* 强调色 - 成功/完成 */
---accent-amber:   #f59e0b;      /* 警告色 */
---accent-red:     #ef4444;      /* 错误色 */
---accent-blue:    #3b82f6;      /* 信息色 */
+--cyan:           #22d3ee;      /* 信息/运行中 */
+--emerald:        #22c55e;      /* 成功 */
+--amber:          #f59e0b;      /* 警告 */
+--red:            #ef4444;      /* 错误 */
 ```
 
 ## 字体系统
 
-| 元素 | 字体 | 字号 | 行高 | 字重 |
-|------|------|------|------|------|
-| 界面文字 | Inter, system-ui, sans-serif | 13-14px | 1.5 | 400 |
-| 标题 h1 | Inter | 24px | 1.3 | 600 |
-| 标题 h2 | Inter | 15px | 1.4 | 600 |
-| 导航项 | Inter | 13px | — | 500 |
-| AI 回复 | JetBrains Mono, monospace | 14px | 1.7 | 400 |
-| 用户消息 | Inter | 14px | 1.6 | 400 |
-| 代码 | JetBrains Mono, monospace | 13px | 1.5 | 400 |
-| 标签/徽章 | JetBrains Mono, monospace | 11px | 1.3 | 500 |
-| 时间戳/元数据 | JetBrains Mono, monospace | 11px | 1.3 | 400 |
-| 导航品牌 | 几何衬线 (π 符号) | 28px | 1 | 900 |
+| 元素 | 字体 | 字号 | 字重 |
+|------|------|------|------|
+| UI 文字 | Inter, system-ui | 13-14px | 400 |
+| AI 回复 | JetBrains Mono | 14px | 400 |
+| 用户消息 | Inter | 14px | 400 |
+| 工具调用 | JetBrains Mono | 12px | 400 |
+| 状态标签 | JetBrains Mono | 11px | 500 |
+| 品牌 π | serif | 22px | 900 |
 
-## 组件设计细节
+## 组件规格
 
-### 左侧导航栏 (Sidebar)
-- 宽度 210px, 固定, 全高, 右侧分割线
-- 顶部: π 品牌标识 + "Trading Pi" 名称 + "Local Trading OS" 副标题
-- 导航: 13 个菜单项, 当前页高亮 (cyan 左边框)
-- 底部: 4 个状态指示器, 小圆点 + 标签 + 值 (Chip)
-- hover 效果: 背景变亮, 边框 cyan
-
-### 聊天工作区 (ChatWorkspace)
-- max-width 900px, margin: 0 auto, 全高 grid
-- Header: 标题 + 状态徽章 (● READY / ● RUNNING / ● ERROR) + command hints
-- Conversation: StickToBottom, 内边距 16px, 消息间距 20px
-- User Message: 右对齐, 深色气泡, 圆角 12px, Inter 字体
-- AI Message: 左对齐, 无气泡, JetBrains Mono 字体, 流式打字机
-- Tool Call: 折叠面板, 默认打开(运行中)或关闭(完成), 左侧 cyan 边框
-- Empty State: 居中, 图标 + 标题 + 描述
-- Input: 底部固定, 圆角 10px, 边框 #1d2a3b, 多行 textarea
-
-### 右侧监控面板 (Inspector)
-- 宽度 320px, 固定, 全高, 左侧分割线
-- 4 个面板卡片 (Timeline / Skills / Risk / Runtime)
-- Timeline: 事件列表, 左侧状态圆点 (绿=完成, 青=运行, 红=失败, 黄=阻塞)
-- Skills: Chip 列表, 等宽字体
-- Risk: 审批项, 紧凑布局
-- Runtime: 键值对网格
-- Artifact Preview: 仅有点击 Preview 按钮时加载
-
-### AI 回复流式效果
-- 打字机效果: Streamdown isAnimating
-- 闪烁光标: `▊` 在文本末尾, CSS animation blink
-- Mono 字体: JetBrains Mono 14px, 行高 1.7
-
-### 状态指示器
-- ● READY: 绿色 (#22c55e), 静态
-- ● RUNNING: 青色 (#22d3ee), 脉冲动画
-- ● SUBMITTED: 青色 (#22d3ee), 旋转
-- ● ERROR: 红色 (#ef4444), 静态
-
-## 间距系统
+### 1. 侧栏 (Sidebar) — 200px
 
 ```
---space-xs:  4px
---space-sm:  8px
---space-md:  14px
---space-lg:  20px
---space-xl:  28px
-
---radius-sm: 6px
---radius-md: 8px
---radius-lg: 10px
---radius-xl: 12px
+┌──────────────────┐
+│  π  Trading Pi   │  ← 品牌，无副标题
+├──────────────────┤
+│  ○ Chat          │  ← 图标 + 文字，当前页高亮
+│  ○ Research      │
+│  ○ Portfolio     │
+│  ○ Journal       │
+│  ○ Review        │
+│  ○ Settings      │
+├──────────────────┤
+│  ◉ SQLite  local │  ← 状态指示，极小
+│  ◉ OpenAI ready  │
+└──────────────────┘
 ```
+
+- 无副标题，无多余文字
+- 导航项仅 6 个（Chat / Research / Portfolio / Journal / Review / Settings）
+- 状态指示仅 2 行，写在底部
+
+### 2. 聊天区 (Chat) — 主角
+
+**Header:**
+```
+Trading Pi  ● idle
+```
+- 仅一行标题 + 状态圆点
+- 无描述文字、无 command hints（这些功能保留但用更轻量的方式）
+
+**Conversation:**
+- 用户消息：右对齐，深色气泡，圆角 12px
+- AI 回复：左对齐，无气泡，等宽字体 14px，行高 1.7
+- 工具调用：折叠卡片，左 cyan 边框，等宽字体
+- Artifact 卡片：在对话流中作为 AI 回复的一部分渲染
+
+**Input:**
+- 底部固定
+- 圆角 10px，聚焦时 cyan 边框
+- 支持多行
+- 占位文字：`/research ETH — 输入或使用斜杠命令`
+
+### 3. 右侧面板 (Panel) — 360px 可折叠
+
+**Tab 1: Artifact Preview** (默认)
+- 类似 Claude 的 artifact 面板
+- Markdown 渲染
+- Copy / Fullscreen 按钮
+- 仅在有 artifact 生成时显示内容
+
+**Tab 2: Execution Timeline** (agent 运行期间自动切到该 tab)
+- 紧凑事件流
+- 每个事件：状态圆点 + 事件名 + 时间
+- running / success / failed 状态
+
+## 交互模式
+
+| 交互 | 行为 |
+|------|------|
+| 用户发送消息 | SSE 流式开始，状态圆点变 cyan+RUNNING |
+| AI 回复中 | 等宽字体逐字出现，闪烁光标 `▊` |
+| 工具调用 | 折叠卡片默认展开，完成后自动折叠 |
+| Artifact 生成 | 右侧面板自动展开并显示 Artifact Preview |
+| 用户切换页面 | 保留会话状态 |
+| 右侧面板 | 可手动折叠/展开 |
 
 ## 动画
 
-| 元素 | 动画 | 时长 | 缓动 |
-|------|------|------|------|
-| 新消息入场 | fadeIn + translateY(6px) | 0.25s | ease-out |
-| 流式光标 | blink (opacity) | 0.8s | step-end |
-| 运行中工具 | pulse (scale) | 1.2s | ease-in-out |
-| hover 状态 | background-color + border-color | 0.15s | ease |
-| Tool 折叠 | height + opacity | 0.2s | ease-in-out |
+| 元素 | 动画 |
+|------|------|
+| 新消息 | fadeIn 0.25s ease-out |
+| 流式光标 | blink 0.8s step-end |
+| 运行中圆点 | pulse 1.2s ease-in-out |
+| 面板展开 | slideIn 0.2s ease-out |
+
+## MVP 验收映射
+
+| MVP 需求 | UI 对应 |
+|----------|---------|
+| Chat Workspace (类似 Claude) | 聊天区为主，输入框固定 |
+| Streaming | SSE + isAnimating + 闪烁光标 |
+| Artifact Preview | 右侧面板，Markdown 渲染 |
+| Execution Timeline | 右侧面板 Timeline tab |
+| Single Agent 状态 | 顶部状态圆点 |
+| 斜杠命令 | 输入框内 `/` 提示 |
 
 ## 响应式
 
 | 断点 | 布局 |
 |------|------|
 | >1180px | 三栏完整 |
-| 800-1180px | 双栏 (侧栏 + 聊天+监察合并) |
-| <800px | 单栏堆叠 |
+| 800-1180px | 侧栏 + 聊天+面板合并 |
+| <800px | 单栏，面板叠在下方 |

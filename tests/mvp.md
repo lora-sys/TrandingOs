@@ -1,10 +1,30 @@
-# Trading Pi MVP
+# Trading Pi MVP 设计计划（更新版）
 
 ## 核心目标
 
 **让一个完全不会交易的人，第一次打开 Trading Pi，就能完成一次完整的"研究 → 计划 → 模拟 → 复盘"闭环。**
 
 如果不能做到这个，其它都是伪需求。
+
+---
+
+## 核心功能流程
+
+```
+Chat
+↓
+Alpha Radar ⭐
+↓
+Market
+↓
+Plan
+↓
+Paper Trade
+↓
+Review
+↓
+Evolution
+```
 
 ---
 
@@ -42,6 +62,65 @@ Paper Trade
 
 ---
 
+## 功能模块详情
+
+### 1️⃣ Chat
+
+支持用户输入自然语言指令，Streaming 输出，历史会话记录，Workspace 切换。
+
+UI：HeroUI OSS + TanStack + React
+
+### 2️⃣ Alpha Radar ⭐
+
+**目的**：提供每日潜在机会，作为 Alpha 来源。
+
+**输入**：用户指令如"最近有什么值得关注的事件？"
+
+**数据源**：
+
+| 类别 | 来源 |
+|------|------|
+| 信息检索 | Exa（Semantic Search） |
+| 社交情绪 | X/Twitter、Reddit（高频话题、情绪） |
+| 事件日历 | CoinMarketCal、Economic Calendar、世界杯赛程 |
+| 预测市场 | Polymarket、Kalshi 等 Prediction Markets |
+| 兜底采集 | AIO Sandbox 浏览器抓取（页面无 API 可用时） |
+
+**输出**：今日机会 Top5，每条包含：
+- 事件名称
+- 市场/场景
+- 当前概率/市场热度
+- 风险评分
+- 简短理由
+
+**用户操作**：点击机会 → 生成研究计划 → Paper Buy → 完成闭环
+
+**技术实现**：Radar Skill + Alpha Radar Workflow，Artifact 输出为 Markdown，可在前端 Artifact Preview 查看
+
+### 3️⃣ Market
+
+接入 CCXT 获取实时市场数据，提供价格、成交量、历史数据，为 Plan / Paper Trade 提供基础信息。
+
+### 4️⃣ Plan
+
+生成 Trade Plan Artifact，可调用 Risk Skill 评估仓位和止损。
+
+### 5️⃣ Paper Trade
+
+模拟买入/卖出，保留交易日志，供 Journal 和 Review 使用。
+
+### 6️⃣ Review
+
+自动生成复盘报告，分析盈亏、策略执行情况，提供改进建议。
+
+### 7️⃣ Evolution
+
+提供半自进化建议（Advice-Based Evolution），当前版本不自动修改 Skill / Workflow。
+
+后续版本可接入 Weakness Mining + Proposal Validation + Evolution Governor。
+
+---
+
 ## P0（必须做）
 
 ### 1. Chat Workspace
@@ -52,8 +131,6 @@ Paper Trade
 - Streaming
 - 历史会话
 - Workspace 切换
-
-UI：HeroUI + assistant-ui
 
 ### 2. Single Agent
 
@@ -66,26 +143,26 @@ UI：HeroUI + assistant-ui
 能识别的意图：
 
 - Research
+- Alpha Radar
 - Trade
 - Review
 - Airdrop
 
-不用复杂推理，够用就行。
-
 ### 3. Workflow Engine
 
-先只做 4 个 Workflow：
+先做 7 个 Workflow：
 
 | Workflow | 输出 |
 |----------|------|
+| Chat Workflow | 对话响应 |
+| Alpha Radar Workflow | 今日机会 Top5 |
 | Research Workflow | Research Report |
 | Trade Planner Workflow | Trade Plan |
 | Paper Trade Workflow | Paper Trade Result |
 | Review Workflow | Review Report |
+| Evolution Workflow | 改进建议 |
 
 ### 4. Skill Registry
-
-先做最少，够用就行。
 
 **市场 — CCXT**
 - `fetchTicker`
@@ -94,24 +171,27 @@ UI：HeroUI + assistant-ui
 **搜索 — Exa**
 - `search`
 
+**Alpha Radar**
+- `radar.scan` — 扫描多源机会
+- `radar.top5` — 输出 Top5
+
 **风险 — Risk**
-- `risk.evaluate`
-  - 仓位建议
-  - 止损建议
+- `risk.evaluate` — 仓位建议、止损建议
 
 **Journal**
 - `journal.create`
 
 ### 5. Artifact Engine
 
-这是 MVP 的灵魂。必须支持以下 Artifact 类型：
+必须支持以下 Artifact 类型：
 
 - Research Report
 - Trade Plan
 - Paper Trade Report
 - Review Report
+- Alpha Radar Report
 
-全部使用 **Markdown** 格式。先不要 PDF。
+全部使用 **Markdown** 格式。先不要 PDF / HTML。
 
 ### 6. Artifact Preview
 
@@ -121,7 +201,7 @@ UI：HeroUI + assistant-ui
 - Copy
 - Fullscreen
 
-先不做：PDF、HTML、Browser。以后再说。
+先不做：PDF、HTML、Browser。
 
 ### 7. Execution Timeline
 
@@ -139,8 +219,6 @@ UI：HeroUI + assistant-ui
 - `running`
 - `success`
 - `failed`
-
-够了。
 
 ### 8. Paper Trading
 
@@ -176,6 +254,28 @@ UI：HeroUI + assistant-ui
 
 ---
 
+## 数据源扩充策略
+
+| 优先级 | 来源 | 说明 |
+|--------|------|------|
+| 第一优先（稳定数据） | CCXT（行情数据）、Exa MCP（信息检索） | 稳定可靠，优先接入 |
+| 第二优先（Alpha） | CoinMarketCal、Economic Calendar、Polymarket、Kalshi、体育赛事 | 提供 Alpha 信号 |
+| 第三优先（兜底） | AIO Sandbox 浏览器采集 | 可自动抓取网页、Reddit、论坛等 |
+
+---
+
+## 技术实现总结
+
+| 维度 | 方案 |
+|------|------|
+| 前端 | HeroUI OSS + TanStack + React |
+| Agent | Pi Mono Single Agent |
+| Workflow | Chat → Alpha Radar → Market → Plan → Paper Trade → Review → Evolution |
+| Artifact Preview | 支持 Markdown，可扩展 HTML/PDF |
+| Loop / E2E | 所有 Skill 调用、Workflow 执行、Artifact 生成有日志，可用于回溯和自进化 |
+
+---
+
 ## MVP 不做（全部砍掉）
 
 这些都是以后的事。
@@ -187,20 +287,24 @@ UI：HeroUI + assistant-ui
 | Evolution Governor | 不是 MVP |
 | Weakness Mining | 不是 MVP |
 | 自动 Proposal | 不是 MVP |
-| Browser Automation | 以后 |
-| AIO Sandbox | 以后 |
-| MCP Marketplace | 不是 MVP |
 | PDF Export | 不是 MVP |
 | HTML Artifact | 不是 MVP |
 | 策略市场 | 不是 MVP |
 | Governor | 不是 MVP |
 | 多 Agent | **永远不做。坚持 Single Agent** |
+| AIO Sandbox（作为独立功能） | 仅作为 Alpha Radar 兜底层，不单独开发 |
+| 自动修改 Skill/Workflow | Evolution 仅出建议，不自动执行 |
 
 ---
 
 ## MVP E2E 验收标准
 
 必须全部通过。
+
+### E2E 0: Alpha Radar
+
+- 用户说：最近有什么值得关注的事件？
+- 结果：Alpha Radar Report 生成，显示 Top5 机会，每条含风险评分和理由
 
 ### E2E 1: 研究
 
@@ -227,6 +331,11 @@ UI：HeroUI + assistant-ui
 - 用户说：帮我复盘
 - 结果：Review Report 生成
 
+### E2E 6: Evolution
+
+- 用户说：有什么可以改进的？
+- 结果：改进建议生成，不自动修改
+
 ---
 
 ## 推荐开发顺序
@@ -237,7 +346,7 @@ Chat + Single Agent + Research Workflow + Artifact Preview
 
 ### Sprint 2
 
-Trade Planner + Risk Skill + Execution Timeline
+Alpha Radar + Market Data + Trade Planner + Risk Skill + Execution Timeline
 
 ### Sprint 3
 
@@ -245,16 +354,16 @@ Paper Trading + Journal
 
 ### Sprint 4
 
-Review + 完整 E2E 测试
+Review + Evolution + 完整 E2E 测试
 
 ---
 
 ## 一句话总结 MVP
 
-> **让一个完全不会交易的人，在不碰真钱的情况下，通过 AI 完成一次完整的研究 → 制定计划 → 模拟交易 → 记录原因 → 自动复盘。**
+> **让一个完全不会交易的人，在不碰真钱的情况下，通过 AI 完成一次完整的研究 → Alpha Radar 发现机会 → 制定计划 → 模拟交易 → 记录原因 → 自动复盘 → 持续进化。**
 
 如果这个闭环跑通，Trading Pi 的 MVP 就成功了。
 
-其它所有东西——Evolution、Governor、Skill Factory、Loop Library、Personal Alpha——都建立在这个闭环之上。
+其它所有东西——Evolution Governor、Skill Factory、Loop Library、Personal Alpha——都建立在这个闭环之上。
 
 **先把这个做扎实，才是真正的 MVP。**

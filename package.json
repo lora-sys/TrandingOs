@@ -18,6 +18,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "24.12.4",
     "concurrently": "9.2.1",
     "playwright": "^1.60.0",

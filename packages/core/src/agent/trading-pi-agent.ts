@@ -35,12 +35,12 @@ export class TradingPiAgent {
   ) {}
 
   async prompt(
-    input: { message: string; sessionId?: string; parentSessionId?: string },
+    input: { message: string; sessionId?: string; parentSessionId?: string; name?: string },
     onStreamEvent?: (event: AgentEvent) => void,
   ) {
     const session = input.parentSessionId
       ? this.deps.sessions.createFork(input.parentSessionId)
-      : this.deps.sessions.ensureSession(input.sessionId);
+      : this.deps.sessions.ensureSession(input.sessionId, input.name);
     this.deps.sessions.append(session.id, "message", { role: "user", content: input.message });
     const baseContext = {
       env: this.deps.env,

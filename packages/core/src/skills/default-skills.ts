@@ -57,7 +57,50 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     riskLevel: "low",
     permission: "read",
     parameters: Type.Object({ symbol: Type.String() }),
-    execute: async (input) => fetchCoinGeckoQuote(input.symbol),
+    execute: async (input, context) => {
+      const symbol = input.symbol;
+      // Check local cache first
+      const cached = await context.repos.getLatestMarketPrice(symbol, "coingecko");
+      if (cached) {
+        const fetchedAt = new Date(cached.fetched_at).getTime();
+        if (Date.now() - fetchedAt < 60_000) {
+          return {
+            source: "coingecko",
+            symbol,
+            assetId: cached.extra_json ? JSON.parse(cached.extra_json).assetId : null,
+            priceUsd: cached.price_usd,
+            change24h: cached.change_24h,
+            fetchedAt: cached.fetched_at,
+          };
+        }
+      }
+      // Fetch fresh data
+      try {
+        const result = await fetchCoinGeckoQuote(symbol);
+        // Store in market_prices
+        await context.repos.upsertMarketPrice({
+          symbol,
+          source: "coingecko",
+          price_usd: result.priceUsd,
+          change_24h: result.change24h ?? undefined,
+          extra_json: JSON.stringify({ assetId: result.assetId }),
+        });
+        return result;
+      } catch (error) {
+        // If fetch fails, return cached data even if stale
+        if (cached) {
+          return {
+            source: "coingecko",
+            symbol,
+            assetId: cached.extra_json ? JSON.parse(cached.extra_json).assetId : null,
+            priceUsd: cached.price_usd,
+            change24h: cached.change_24h,
+            fetchedAt: cached.fetched_at,
+          };
+        }
+        throw error;
+      }
+    },
   });
 
   registry.register({
@@ -70,7 +113,66 @@ export function registerDefaultSkills(registry: SkillRegistry) {
       symbol: Type.String(),
       exchange: Type.Optional(Type.String()),
     }),
-    execute: async (input, context) => fetchCcxtTicker(input.exchange ?? context.env.defaultExchange, input.symbol),
+    execute: async (input, context) => {
+      const symbol = input.symbol;
+      const exchange = input.exchange ?? context.env.defaultExchange;
+      // Check local cache first
+      const cached = await context.repos.getLatestMarketPrice(symbol, "ccxt");
+      if (cached) {
+        const fetchedAt = new Date(cached.fetched_at).getTime();
+        if (Date.now() - fetchedAt < 60_000) {
+          return {
+            source: "ccxt",
+            exchange: cached.exchange,
+            symbol,
+            last: cached.last,
+            bid: cached.bid,
+            ask: cached.ask,
+            high: cached.high,
+            low: cached.low,
+            percentage: cached.extra_json ? JSON.parse(cached.extra_json).percentage : null,
+            timestamp: cached.extra_json ? JSON.parse(cached.extra_json).timestamp : null,
+            datetime: cached.extra_json ? JSON.parse(cached.extra_json).datetime : null,
+          };
+        }
+      }
+      // Fetch fresh data
+      try {
+        const result = await fetchCcxtTicker(exchange, symbol);
+        // Store in market_prices
+        await context.repos.upsertMarketPrice({
+          symbol,
+          exchange,
+          source: "ccxt",
+          price_usd: result.last,
+          bid: result.bid,
+          ask: result.ask,
+          last: result.last,
+          high: result.high,
+          low: result.low,
+          extra_json: JSON.stringify({ percentage: result.percentage, timestamp: result.timestamp, datetime: result.datetime }),
+        });
+        return result;
+      } catch (error) {
+        // If fetch fails, return cached data even if stale
+        if (cached) {
+          return {
+            source: "ccxt",
+            exchange: cached.exchange,
+            symbol,
+            last: cached.last,
+            bid: cached.bid,
+            ask: cached.ask,
+            high: cached.high,
+            low: cached.low,
+            percentage: cached.extra_json ? JSON.parse(cached.extra_json).percentage : null,
+            timestamp: cached.extra_json ? JSON.parse(cached.extra_json).timestamp : null,
+            datetime: cached.extra_json ? JSON.parse(cached.extra_json).datetime : null,
+          };
+        }
+        throw error;
+      }
+    },
   });
 
   registry.register({
@@ -85,8 +187,82 @@ export function registerDefaultSkills(registry: SkillRegistry) {
       timeframe: Type.Optional(Type.String()),
       limit: Type.Optional(Type.Number()),
     }),
-    execute: async (input, context) =>
-      fetchCcxtOhlcv(input.exchange ?? context.env.defaultExchange, input.symbol, input.timeframe ?? "1h", input.limit ?? 24),
+    execute: async (input, context) => {
+      const symbol = input.symbol;
+      const exchange = input.exchange ?? context.env.defaultExchange;
+      const timeframe = input.timeframe ?? "1h";
+      const limit = input.limit ?? 24;
+      // Check local cache first
+      const localCandles = await context.repos.getOhlcvCandles(symbol, timeframe, limit);
+      if (localCandles.length > 0) {
+        const latestFetched = new Date(localCandles[0].fetched_at).getTime();
+        if (Date.now() - latestFetched < 5 * 60_000) {
+          // Fresh data, return it
+          return {
+            source: "ccxt",
+            exchange,
+            symbol,
+            timeframe,
+            rows: localCandles.map((c) => ({
+              timestamp: c.timestamp,
+              datetime: new Date(c.timestamp).toISOString(),
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+            })),
+          };
+        }
+      }
+      // Attempt to fetch fresh data
+      try {
+        const result = await fetchCcxtOhlcv(exchange, symbol, timeframe, limit);
+        // Store candles in local database
+        await context.repos.upsertOhlcvCandles(
+          result.rows.map((r: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }) => ({
+            symbol,
+            exchange,
+            timeframe,
+            timestamp: r.timestamp,
+            open: r.open,
+            high: r.high,
+            low: r.low,
+            close: r.close,
+            volume: r.volume,
+          }))
+        );
+        return result;
+      } catch (error) {
+        // If fetch fails, return local data even if stale
+        if (localCandles.length > 0) {
+          return {
+            source: "ccxt",
+            exchange,
+            symbol,
+            timeframe,
+            rows: localCandles.map((c) => ({
+              timestamp: c.timestamp,
+              datetime: new Date(c.timestamp).toISOString(),
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+            })),
+          };
+        }
+        // No local data, return empty rows with warning
+        return {
+          source: "ccxt",
+          exchange,
+          symbol,
+          timeframe,
+          rows: [],
+          warning: "Failed to fetch OHLCV data and no local cache available.",
+        };
+      }
+    },
   });
 
   registry.register({
@@ -102,42 +278,242 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, context) => {
       const outputs: Record<string, unknown> = {};
       const errors: Record<string, string> = {};
+      const symbol = input.symbol;
+      const exchange = input.exchange ?? context.env.defaultExchange;
+
+      // Helper to check freshness (60 seconds)
+      const isFresh = (fetchedAt: string) => Date.now() - new Date(fetchedAt).getTime() < 60_000;
+
+      // CoinGecko
       try {
-        outputs.coingecko = await fetchCoinGeckoQuote(input.symbol);
+        const cached = await context.repos.getLatestMarketPrice(symbol, "coingecko");
+        if (cached && isFresh(cached.fetched_at)) {
+          outputs.coingecko = {
+            source: "coingecko",
+            symbol,
+            assetId: cached.extra_json ? JSON.parse(cached.extra_json).assetId : null,
+            priceUsd: cached.price_usd,
+            change24h: cached.change_24h,
+            fetchedAt: cached.fetched_at,
+          };
+        } else {
+          const result = await fetchCoinGeckoQuote(symbol);
+          await context.repos.upsertMarketPrice({
+            symbol,
+            source: "coingecko",
+            price_usd: result.priceUsd,
+            change_24h: result.change24h ?? undefined,
+            extra_json: JSON.stringify({ assetId: result.assetId }),
+          });
+          outputs.coingecko = result;
+        }
       } catch (error) {
         errors.coingecko = error instanceof Error ? error.message : String(error);
+        // Try to return stale cached data
+        const cached = await context.repos.getLatestMarketPrice(symbol, "coingecko");
+        if (cached) {
+          outputs.coingecko = {
+            source: "coingecko",
+            symbol,
+            assetId: cached.extra_json ? JSON.parse(cached.extra_json).assetId : null,
+            priceUsd: cached.price_usd,
+            change24h: cached.change_24h,
+            fetchedAt: cached.fetched_at,
+          };
+        }
       }
+
+      // CoinMarketCap
       try {
-        outputs.coinMarketCap = await fetchCoinMarketCapQuote(context.env.coinMarketCapApiKey, input.symbol);
+        const cached = await context.repos.getLatestMarketPrice(symbol, "coinmarketcap");
+        if (cached && isFresh(cached.fetched_at)) {
+          outputs.coinMarketCap = {
+            source: "coinmarketcap",
+            symbol,
+            priceUsd: cached.price_usd,
+            change24h: cached.change_24h,
+            fetchedAt: cached.fetched_at,
+          };
+        } else {
+          const result = await fetchCoinMarketCapQuote(context.env.coinMarketCapApiKey, symbol);
+          await context.repos.upsertMarketPrice({
+            symbol,
+            source: "coinmarketcap",
+            price_usd: result.priceUsd,
+            change_24h: result.change24h ?? undefined,
+            extra_json: JSON.stringify(result),
+          });
+          outputs.coinMarketCap = result;
+        }
       } catch (error) {
         errors.coinMarketCap = error instanceof Error ? error.message : String(error);
+        const cached = await context.repos.getLatestMarketPrice(symbol, "coinmarketcap");
+        if (cached) {
+          outputs.coinMarketCap = {
+            source: "coinmarketcap",
+            symbol,
+            priceUsd: cached.price_usd,
+            change24h: cached.change_24h,
+            fetchedAt: cached.fetched_at,
+          };
+        }
       }
+
+      // DefiLlama
       try {
-        outputs.defiLlama = await fetchDefiLlamaPrice(input.symbol);
+        const cached = await context.repos.getLatestMarketPrice(symbol, "defillama");
+        if (cached && isFresh(cached.fetched_at)) {
+          outputs.defiLlama = {
+            source: "defillama",
+            symbol,
+            priceUsd: cached.price_usd,
+            fetchedAt: cached.fetched_at,
+          };
+        } else {
+          const result = await fetchDefiLlamaPrice(symbol);
+          await context.repos.upsertMarketPrice({
+            symbol,
+            source: "defillama",
+            price_usd: result.priceUsd,
+            extra_json: JSON.stringify(result),
+          });
+          outputs.defiLlama = result;
+        }
       } catch (error) {
         errors.defiLlama = error instanceof Error ? error.message : String(error);
+        const cached = await context.repos.getLatestMarketPrice(symbol, "defillama");
+        if (cached) {
+          outputs.defiLlama = {
+            source: "defillama",
+            symbol,
+            priceUsd: cached.price_usd,
+            fetchedAt: cached.fetched_at,
+          };
+        }
       }
+
+      // CCXT Ticker
       try {
-        outputs.ccxtTicker = await fetchCcxtTicker(input.exchange ?? context.env.defaultExchange, input.symbol);
+        const cached = await context.repos.getLatestMarketPrice(symbol, "ccxt");
+        if (cached && isFresh(cached.fetched_at)) {
+          outputs.ccxtTicker = {
+            source: "ccxt",
+            exchange: cached.exchange,
+            symbol,
+            last: cached.last,
+            bid: cached.bid,
+            ask: cached.ask,
+            high: cached.high,
+            low: cached.low,
+            percentage: cached.extra_json ? JSON.parse(cached.extra_json).percentage : null,
+            timestamp: cached.extra_json ? JSON.parse(cached.extra_json).timestamp : null,
+            datetime: cached.extra_json ? JSON.parse(cached.extra_json).datetime : null,
+          };
+        } else {
+          const result = await fetchCcxtTicker(exchange, symbol);
+          await context.repos.upsertMarketPrice({
+            symbol,
+            exchange,
+            source: "ccxt",
+            price_usd: result.last,
+            bid: result.bid,
+            ask: result.ask,
+            last: result.last,
+            high: result.high,
+            low: result.low,
+            extra_json: JSON.stringify({ percentage: result.percentage, timestamp: result.timestamp, datetime: result.datetime }),
+          });
+          outputs.ccxtTicker = result;
+        }
       } catch (error) {
         errors.ccxtTicker = error instanceof Error ? error.message : String(error);
+        const cached = await context.repos.getLatestMarketPrice(symbol, "ccxt");
+        if (cached) {
+          outputs.ccxtTicker = {
+            source: "ccxt",
+            exchange: cached.exchange,
+            symbol,
+            last: cached.last,
+            bid: cached.bid,
+            ask: cached.ask,
+            high: cached.high,
+            low: cached.low,
+            percentage: cached.extra_json ? JSON.parse(cached.extra_json).percentage : null,
+            timestamp: cached.extra_json ? JSON.parse(cached.extra_json).timestamp : null,
+            datetime: cached.extra_json ? JSON.parse(cached.extra_json).datetime : null,
+          };
+        }
       }
+
+      // CCXT OHLCV
       try {
-        outputs.ccxtOhlcv = await fetchCcxtOhlcv(input.exchange ?? context.env.defaultExchange, input.symbol, "1h", 24);
+        const localCandles = await context.repos.getOhlcvCandles(symbol, "1h", 24);
+        if (localCandles.length > 0 && isFresh(localCandles[0].fetched_at)) {
+          outputs.ccxtOhlcv = {
+            source: "ccxt",
+            exchange,
+            symbol,
+            timeframe: "1h",
+            rows: localCandles.map((c) => ({
+              timestamp: c.timestamp,
+              datetime: new Date(c.timestamp).toISOString(),
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+            })),
+          };
+        } else {
+          const result = await fetchCcxtOhlcv(exchange, symbol, "1h", 24);
+          await context.repos.upsertOhlcvCandles(
+            result.rows.map((r: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }) => ({
+              symbol,
+              exchange,
+              timeframe: "1h",
+              timestamp: r.timestamp,
+              open: r.open,
+              high: r.high,
+              low: r.low,
+              close: r.close,
+              volume: r.volume,
+            }))
+          );
+          outputs.ccxtOhlcv = result;
+        }
       } catch (error) {
         errors.ccxtOhlcv = error instanceof Error ? error.message : String(error);
+        const localCandles = await context.repos.getOhlcvCandles(symbol, "1h", 24);
+        if (localCandles.length > 0) {
+          outputs.ccxtOhlcv = {
+            source: "ccxt",
+            exchange,
+            symbol,
+            timeframe: "1h",
+            rows: localCandles.map((c) => ({
+              timestamp: c.timestamp,
+              datetime: new Date(c.timestamp).toISOString(),
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+            })),
+          };
+        }
       }
+
       const result = {
-        symbol: input.symbol,
-        exchange: input.exchange ?? context.env.defaultExchange,
+        symbol,
+        exchange,
         layer: "market-data-layer",
         router: "ccxt-fallback-only",
         outputs,
         errors,
         observedAt: new Date().toISOString(),
       };
-      context.repos.setCache({ namespace: "market", key: `market:${input.symbol}:${input.exchange ?? context.env.defaultExchange}`, value: result, source: "market-data-layer", ttlMs: 60_000 });
-      context.repos.createAuditRecord({ category: "market", action: "market.snapshot", status: Object.keys(outputs).length ? "completed" : "failed", payload: { symbol: input.symbol, errors } });
+      context.repos.setCache({ namespace: "market", key: `market:${symbol}:${exchange}`, value: result, source: "market-data-layer", ttlMs: 60_000 });
+      context.repos.createAuditRecord({ category: "market", action: "market.snapshot", status: Object.keys(outputs).length ? "completed" : "failed", payload: { symbol, errors } });
       return result;
     },
   });

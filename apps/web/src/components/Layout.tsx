@@ -1,72 +1,91 @@
-import { Chip } from "@heroui/react/chip";
-import { Link } from "@tanstack/react-router";
-import { Activity, BarChart3, BookOpen, Boxes, BrainCircuit, ClipboardList, Database, FileClock, FolderKanban, GraduationCap, LineChart, MessageSquare, MonitorCog, NotebookPen, Settings, Shield } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
-import { tradingPiApi } from "../api/client.js";
-import { Inspector } from "./Inspector.js";
 import { SessionProvider } from "./session.js";
+import { TopBar } from "./TopBar.js";
+import { LeftSidebar } from "./LeftSidebar.js";
+import { RightSidebar } from "./RightSidebar.js";
+import { PreviewPanel } from "./PreviewPanel.js";
+import { ErrorBoundary } from "./ErrorBoundary.js";
 
-const nav = [
-  { to: "/chat", label: "Chat", icon: MessageSquare },
-  { to: "/workspaces", label: "Workspaces", icon: FolderKanban },
-  { to: "/market", label: "Market", icon: LineChart },
-  { to: "/research", label: "Research", icon: BrainCircuit },
-  { to: "/planner", label: "Planner", icon: ClipboardList },
-  { to: "/portfolio", label: "Portfolio", icon: BarChart3 },
-  { to: "/journal", label: "Journal", icon: NotebookPen },
-  { to: "/review", label: "Review", icon: FileClock },
-  { to: "/evolution", label: "Evolution", icon: BookOpen },
-  { to: "/marketplace", label: "Marketplace", icon: Boxes },
-  { to: "/journey", label: "Beginner", icon: GraduationCap },
-  { to: "/system", label: "System", icon: MonitorCog },
-  { to: "/settings", label: "Settings", icon: Settings },
-] as const;
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
 
 export function Layout({ children }: { children: ReactNode }) {
-  const status = useQuery({ queryKey: ["status"], queryFn: tradingPiApi.status });
+  const isMobile = useIsMobile();
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   return (
     <SessionProvider>
-      <main className="appShell">
-        <aside className="sideNav">
-          <div className="brandMark">
-            <span className="piSymbol">π</span>
-            <div>
-              <span className="brandName">Trading Pi</span>
-              <span className="brandSub">Local Trading OS</span>
-            </div>
-          </div>
-          <nav>
-            {nav.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link key={item.to} to={item.to} className="navItem" activeProps={{ className: "navItem active" }}>
-                  <Icon size={17} />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="sideStatus">
-            <StatusLine icon={<Database size={14} />} label="SQLite" value="local" />
-            <StatusLine icon={<Activity size={14} />} label="Langfuse" value={status.data?.langfuseConfigured ? "on" : "off"} />
-            <StatusLine icon={<Shield size={14} />} label="Sandbox" value={status.data?.env?.aioSandboxBaseUrl ? "aio" : "off"} />
-            <StatusLine icon={<Boxes size={14} />} label="MCP" value={String(status.data?.mcpServers ?? 0)} />
-          </div>
-        </aside>
+      <main
+        className={`appShell ${leftOpen ? "left-open" : ""} ${rightOpen ? "right-open" : ""} ${previewOpen ? "preview-open" : ""}`}
+        id="appShell"
+      >
+        <TopBar
+          leftDrawerOpen={leftOpen}
+          onToggleLeftDrawer={() => setLeftOpen((o) => !o)}
+          onToggleRightDrawer={() => setRightOpen((o) => !o)}
+        />
+
+        {isMobile && (leftOpen || rightOpen) && (
+          <div className="sidebarOverlay visible" onClick={() => { setLeftOpen(false); setRightOpen(false); }} />
+        )}
+
+        <ErrorBoundary name="LeftSidebar">
+          <LeftSidebar
+            drawerOpen={leftOpen}
+            onCloseDrawer={() => setLeftOpen(false)}
+          />
+        </ErrorBoundary>
+
         <section className="workspace">{children}</section>
-        <Inspector />
+
+        <div className="previewContainer" style={{ display: previewOpen ? "block" : "none" }}>
+           <PreviewPanel artifactId={selectedArtifactId} onClose={() => setPreviewOpen(false)} />
+        </div>
+
+        <button
+          className="previewToggleBtn"
+          style={{ 
+            display: "flex", 
+            bottom: "32px", 
+            right: previewOpen ? (rightOpen ? "780px" : "500px") : (rightOpen ? "300px" : "20px"),
+            transition: "right 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+          }}
+          onClick={() => setPreviewOpen((o) => !o)}
+          title={previewOpen ? "Hide Preview" : "Show Preview"}
+        >
+          {previewOpen ? "▶" : "◀"}
+        </button>
+
+        <ErrorBoundary name="RightSidebar">
+          <RightSidebar
+            drawerOpen={rightOpen}
+            onCloseDrawer={() => setRightOpen(false)}
+            onOpenPreview={(artifactId) => {
+              setPreviewOpen(true);
+              if (artifactId) setSelectedArtifactId(artifactId);
+            }}
+          />
+        </ErrorBoundary>
       </main>
     </SessionProvider>
-  );
-}
-
-function StatusLine({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="statusLine">
-      <span>{icon}{label}</span>
-      <Chip size="sm" variant="soft" color={value === "off" ? "warning" : "success"}>{value}</Chip>
-    </div>
   );
 }

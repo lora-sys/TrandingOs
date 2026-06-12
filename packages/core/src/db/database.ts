@@ -317,6 +317,59 @@ export class TradingPiDatabase {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      -- Market price cache
+      CREATE TABLE IF NOT EXISTS market_prices (
+        id TEXT PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        exchange TEXT,
+        source TEXT NOT NULL,
+        price_usd REAL,
+        change_24h REAL,
+        bid REAL,
+        ask REAL,
+        last REAL,
+        high REAL,
+        low REAL,
+        volume REAL,
+        extra_json TEXT,
+        fetched_at TEXT NOT NULL
+      );
+
+      -- OHLCV candle persistence
+      CREATE TABLE IF NOT EXISTS market_ohlcv (
+        id TEXT PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        exchange TEXT,
+        timeframe TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        open REAL NOT NULL,
+        high REAL NOT NULL,
+        low REAL NOT NULL,
+        close REAL NOT NULL,
+        volume REAL DEFAULT 0,
+        fetched_at TEXT NOT NULL
+      );
+
+      -- Search results cache
+      CREATE TABLE IF NOT EXISTS search_cache (
+        id TEXT PRIMARY KEY,
+        query TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        results_json TEXT NOT NULL,
+        fetched_at TEXT NOT NULL,
+        expires_at TEXT
+      );
+    `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_market_prices_symbol ON market_prices(symbol, fetched_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_market_ohlcv_symbol ON market_ohlcv(symbol, timeframe, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol, status);
+      CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_memory_domain ON memory_records(domain, workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_timeline_session ON timeline_events(session_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_search_cache_query ON search_cache(query, provider, fetched_at);
     `);
     this.addColumnIfMissing("sessions", "parent_session_id", "TEXT REFERENCES sessions(id)");
     this.addColumnIfMissing("sessions", "message_count", "INTEGER DEFAULT 0");

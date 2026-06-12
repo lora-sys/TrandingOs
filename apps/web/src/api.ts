@@ -17,16 +17,34 @@ export const tradingPiApi = {
   aiPing: () => rpc("/api/ai/ping"),
   sendMessage: (message: string, sessionId?: string) => rpc("/api/session/message", { message, sessionId }),
   /** SSE streaming: returns an EventTarget that emits agent events + 'done' */
-  sendMessageStream: (message: string, sessionId?: string) => {
+  sendMessageStream: (message: string, sessionId?: string, files?: File[]) => {
     const target = new EventTarget();
-    const body = JSON.stringify({ message, sessionId });
+    const controller = new AbortController();
+
+    (target as any)._controller = controller;
+
+    let body: string | FormData;
+    let headers: Record<string, string> = {};
+
+    if (files && files.length > 0) {
+      const formData = new FormData();
+      formData.append("message", message);
+      if (sessionId) formData.append("sessionId", sessionId);
+      files.forEach((file) => formData.append("files", file));
+      body = formData;
+    } else {
+      body = JSON.stringify({ message, sessionId });
+      headers["Content-Type"] = "application/json";
+    }
+
     fetch(`${BASE}/api/session/message/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body,
+      signal: controller.signal,
     }).then(async (res) => {
       if (!res.ok) {
-        target.dispatchEvent(new CustomEvent("error", { detail: new Error(`SSE ${res.status}`) }));
+        target.dispatchEvent(new CustomEvent("error", { detail: { message: `Connection failed (${res.status})` } }));
         return;
       }
       const reader = res.body?.getReader();
@@ -37,7 +55,6 @@ export const tradingPiApi = {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        // Parse SSE frames: event: xxx\ndata: {...}\n\n
         const frames = buffer.split("\n\n");
         buffer = frames.pop() ?? "";
         for (const frame of frames) {
@@ -59,7 +76,16 @@ export const tradingPiApi = {
           } catch { /* skip malformed */ }
         }
       }
-    }).catch((err) => target.dispatchEvent(new CustomEvent("error", { detail: err })));
+    }).catch((err) => {
+      if (err.name === "AbortError") {
+        target.dispatchEvent(new CustomEvent("done", { detail: { aborted: true } }));
+      } else {
+        target.dispatchEvent(new CustomEvent("error", { detail: { message: err.message || "Connection failed" } }));
+      }
+    });
+
+    (target as any).abort = () => controller.abort();
+
     return target;
   },
   sessions: () => rpc("/api/sessions"),
@@ -79,6 +105,7 @@ export const tradingPiApi = {
   runResearch: (input: any) => rpc("/api/workflows/research.asset/run", input),
   runMarketSnapshot: (input: any) => rpc("/api/workflows/market.snapshot/run", input),
   runWorkflow: (workflowId: string, input: any, sessionId?: string) => rpc(`/api/workflows/${workflowId}/run`, { input, sessionId }),
+  runReviewDaily: (period: string = "daily") => rpc("/api/workflows/review.daily/run", { input: { period } }),
   createPaperOrder: (input: any, sessionId?: string) => rpc("/api/paper/orders", { input, sessionId }),
   portfolio: () => rpc("/api/portfolio"),
   trades: () => rpc("/api/trades"),
@@ -102,4 +129,6 @@ export const tradingPiApi = {
   memory: () => rpc("/api/memory"),
   queryMemory: (input: any) => rpc("/api/memory/query", input),
   writeMemory: (input: any) => rpc("/api/memory/write", input),
+  ohlcv: (symbol: string, timeframe: string, limit: number) =>
+    rpc(`/api/market/ohlcv?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
 };
