@@ -43,25 +43,53 @@ function toChatMessage(entry: any) {
   return { id: entry.id, role: "system", kind: entry.type, content: entry.type.replace(/_/g, " "), timestamp: entry.timestamp };
 }
 
-function compactStreamEvent(event: any) {
+/* ── Runtime config (mutable by frontend via /api/config) ── */
+const agentConfig = {
+  thinkingLevel: "medium" as string,
+  modelId: env.openaiModel ?? "default",
+  autoCompaction: true,
+};
+
+/* ── Forward complete AgentEvent — no stripping ── */
+function forwardStreamEvent(event: any) {
+  // message_update: forward full structured message with all content blocks
   if (event.type === "message_update") {
-    // Only forward text content to avoid huge payloads
-    const text = event.message?.content
-      ?.filter((b: any) => b.type === "text")
-      .map((b: any) => b.text)
-      .join("") ?? "";
-    return { text, assistantMessageEvent: event.assistantMessageEvent };
+    return {
+      type: event.type,
+      message: event.message,           // Full PiMessage with content blocks (text/thinking/toolCall)
+      assistantMessageEvent: event.assistantMessageEvent, // { type, delta }
+    };
   }
+  // tool events: forward with full context
   if (event.type === "tool_execution_start") {
-    return { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args };
+    return {
+      type: event.type,
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      args: event.args,
+    };
   }
   if (event.type === "tool_execution_end") {
-    return { toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError };
+    return {
+      type: event.type,
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      isError: event.isError,
+      result: event.result,
+      partialResult: event.partialResult,
+    };
   }
+  // artifact events
   if (event.type === "artifact_update") {
-    return { artifactId: event.artifactId, content: event.content, title: event.title };
+    return {
+      type: event.type,
+      artifactId: event.artifactId,
+      content: event.content,
+      title: event.title,
+    };
   }
-  return event;
+  // Everything else: forward as-is (message_end, etc.)
+  return { type: event.type, ...event };
 }
 
 function extractContent(message: any) {
@@ -97,11 +125,29 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   try {
     if (url.pathname === "/api/health") return sendJson(res, { ok: true, name: "Trading Pi", localFirst: true, sqlitePath: paths.sqlitePath, time: new Date().toISOString() });
-    if (url.pathname === "/api/status") return sendJson(res, { status: agentStatus, skills: skills.list().length, workflows: workflows.list().length, langfuseConfigured: telemetry.configured, paths });
+    if (url.pathname === "/api/status") return sendJson(res, { status: agentStatus, skills: skills.list().length, workflows: workflows.list().length, langfuseConfigured: telemetry.configured, paths, config: agentConfig });
+
+    // ── /api/config: runtime configuration (frontend → backend) ──
+    if (url.pathname === "/api/config" && req.method === "GET") {
+      return sendJson(res, agentConfig);
+    }
+    if (url.pathname === "/api/config" && req.method === "POST") {
+      const body = await readBody(req);
+      if (body.thinkingLevel !== undefined) agentConfig.thinkingLevel = String(body.thinkingLevel);
+      if (body.modelId !== undefined) agentConfig.modelId = String(body.modelId);
+      if (body.autoCompaction !== undefined) agentConfig.autoCompaction = Boolean(body.autoCompaction);
+      return sendJson(res, agentConfig);
+    }
     if (url.pathname === "/api/skills" && req.method === "GET") return sendJson(res, skills.list());
     if (url.pathname === "/api/workflows" && req.method === "GET") return sendJson(res, workflows.list());
     if (url.pathname === "/api/timeline" && req.method === "GET") return sendJson(res, repos.list("timeline_events"));
     if (url.pathname === "/api/sessions" && req.method === "GET") return sendJson(res, repos.list("sessions"));
+    if (url.pathname.startsWith("/api/sessions/") && req.method === "DELETE") {
+      const sessionId = url.pathname.replace(/^\/api\/sessions\//, "");
+      const deleted = sessions.deleteSession(sessionId);
+      if (!deleted) return sendJson(res, { error: "Session not found" }, 404);
+      return sendJson(res, { success: true, deleted: sessionId });
+    }
     if (url.pathname === "/api/approvals" && req.method === "GET") return sendJson(res, repos.list("approvals"));
 
     if (url.pathname === "/api/mcp/servers" && req.method === "GET") return sendJson(res, repos.list("mcp_servers"));
@@ -129,7 +175,8 @@ const server = createServer(async (req, res) => {
       try {
         const result = await agent.prompt({ message, sessionId }, (event) => {
           try {
-            const data = JSON.stringify({ type: event.type, event: compactStreamEvent(event) });
+            const forwarded = forwardStreamEvent(event);
+            const data = JSON.stringify(forwarded);
             res.write(`event: ${event.type}\ndata: ${data}\n\n`);
           } catch { /* client may have disconnected */ }
         });

@@ -12,6 +12,7 @@ import { fetchCcxtOhlcv, fetchCcxtTicker } from "../market/ccxt.js";
 import { fetchCoinGeckoQuote } from "../market/coingecko.js";
 import type { SkillRegistry } from "./registry.js";
 import type { SkillContext } from "./types.js";
+import { withCacheStrategy } from "./cache-utils.js";
 
 export function registerDefaultSkills(registry: SkillRegistry) {
   const searchHub = (context: SkillContext) =>
@@ -59,47 +60,31 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     parameters: Type.Object({ symbol: Type.String() }),
     execute: async (input, context) => {
       const symbol = input.symbol;
-      // Check local cache first
-      const cached = await context.repos.getLatestMarketPrice(symbol, "coingecko");
-      if (cached) {
-        const fetchedAt = new Date(cached.fetched_at).getTime();
-        if (Date.now() - fetchedAt < 60_000) {
-          return {
-            source: "coingecko",
+      return withCacheStrategy(
+        () => context.repos.getLatestMarketPrice(symbol, "coingecko"),
+        {
+          maxAgeMs: 60_000,
+          fetchFresh: async () => {
+            const result = await fetchCoinGeckoQuote(symbol);
+            await context.repos.upsertMarketPrice({
+              symbol,
+              source: "coingecko",
+              price_usd: result.priceUsd,
+              change_24h: result.change24h ?? undefined,
+              extra_json: JSON.stringify({ assetId: result.assetId }),
+            });
+            return result;
+          },
+          transformCache: (cached) => ({
+            source: "coingecko" as const,
             symbol,
             assetId: cached.extra_json ? JSON.parse(cached.extra_json).assetId : null,
             priceUsd: cached.price_usd,
             change24h: cached.change_24h,
             fetchedAt: cached.fetched_at,
-          };
-        }
-      }
-      // Fetch fresh data
-      try {
-        const result = await fetchCoinGeckoQuote(symbol);
-        // Store in market_prices
-        await context.repos.upsertMarketPrice({
-          symbol,
-          source: "coingecko",
-          price_usd: result.priceUsd,
-          change_24h: result.change24h ?? undefined,
-          extra_json: JSON.stringify({ assetId: result.assetId }),
-        });
-        return result;
-      } catch (error) {
-        // If fetch fails, return cached data even if stale
-        if (cached) {
-          return {
-            source: "coingecko",
-            symbol,
-            assetId: cached.extra_json ? JSON.parse(cached.extra_json).assetId : null,
-            priceUsd: cached.price_usd,
-            change24h: cached.change_24h,
-            fetchedAt: cached.fetched_at,
-          };
-        }
-        throw error;
-      }
+          }),
+        },
+      );
     },
   });
 
@@ -116,13 +101,28 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, context) => {
       const symbol = input.symbol;
       const exchange = input.exchange ?? context.env.defaultExchange;
-      // Check local cache first
-      const cached = await context.repos.getLatestMarketPrice(symbol, "ccxt");
-      if (cached) {
-        const fetchedAt = new Date(cached.fetched_at).getTime();
-        if (Date.now() - fetchedAt < 60_000) {
-          return {
-            source: "ccxt",
+      return withCacheStrategy(
+        () => context.repos.getLatestMarketPrice(symbol, "ccxt"),
+        {
+          maxAgeMs: 60_000,
+          fetchFresh: async () => {
+            const result = await fetchCcxtTicker(exchange, symbol);
+            await context.repos.upsertMarketPrice({
+              symbol,
+              exchange,
+              source: "ccxt",
+              price_usd: result.last,
+              bid: result.bid,
+              ask: result.ask,
+              last: result.last,
+              high: result.high,
+              low: result.low,
+              extra_json: JSON.stringify({ percentage: result.percentage, timestamp: result.timestamp, datetime: result.datetime }),
+            });
+            return result;
+          },
+          transformCache: (cached) => ({
+            source: "ccxt" as const,
             exchange: cached.exchange,
             symbol,
             last: cached.last,
@@ -133,45 +133,9 @@ export function registerDefaultSkills(registry: SkillRegistry) {
             percentage: cached.extra_json ? JSON.parse(cached.extra_json).percentage : null,
             timestamp: cached.extra_json ? JSON.parse(cached.extra_json).timestamp : null,
             datetime: cached.extra_json ? JSON.parse(cached.extra_json).datetime : null,
-          };
-        }
-      }
-      // Fetch fresh data
-      try {
-        const result = await fetchCcxtTicker(exchange, symbol);
-        // Store in market_prices
-        await context.repos.upsertMarketPrice({
-          symbol,
-          exchange,
-          source: "ccxt",
-          price_usd: result.last,
-          bid: result.bid,
-          ask: result.ask,
-          last: result.last,
-          high: result.high,
-          low: result.low,
-          extra_json: JSON.stringify({ percentage: result.percentage, timestamp: result.timestamp, datetime: result.datetime }),
-        });
-        return result;
-      } catch (error) {
-        // If fetch fails, return cached data even if stale
-        if (cached) {
-          return {
-            source: "ccxt",
-            exchange: cached.exchange,
-            symbol,
-            last: cached.last,
-            bid: cached.bid,
-            ask: cached.ask,
-            high: cached.high,
-            low: cached.low,
-            percentage: cached.extra_json ? JSON.parse(cached.extra_json).percentage : null,
-            timestamp: cached.extra_json ? JSON.parse(cached.extra_json).timestamp : null,
-            datetime: cached.extra_json ? JSON.parse(cached.extra_json).datetime : null,
-          };
-        }
-        throw error;
-      }
+          }),
+        },
+      );
     },
   });
 
@@ -192,76 +156,57 @@ export function registerDefaultSkills(registry: SkillRegistry) {
       const exchange = input.exchange ?? context.env.defaultExchange;
       const timeframe = input.timeframe ?? "1h";
       const limit = input.limit ?? 24;
-      // Check local cache first
-      const localCandles = await context.repos.getOhlcvCandles(symbol, timeframe, limit);
-      if (localCandles.length > 0) {
-        const latestFetched = new Date(localCandles[0].fetched_at).getTime();
-        if (Date.now() - latestFetched < 5 * 60_000) {
-          // Fresh data, return it
-          return {
-            source: "ccxt",
+
+      const mapCandles = (localCandles: Array<{ timestamp: number; fetched_at: string; open: number; high: number; low: number; close: number; volume: number }>) => ({
+        source: "ccxt" as const,
+        exchange,
+        symbol,
+        timeframe,
+        rows: localCandles.map((c) => ({
+          timestamp: c.timestamp,
+          datetime: new Date(c.timestamp).toISOString(),
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+        })),
+      });
+
+      return withCacheStrategy(
+        () => context.repos.getOhlcvCandles(symbol, timeframe, limit),
+        {
+          maxAgeMs: 5 * 60_000,
+          isCachedFresh: (localCandles) =>
+            localCandles.length > 0 && Date.now() - new Date(localCandles[0].fetched_at).getTime() < 5 * 60_000,
+          fetchFresh: async () => {
+            const result = await fetchCcxtOhlcv(exchange, symbol, timeframe, limit);
+            await context.repos.upsertOhlcvCandles(
+              result.rows.map((r: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }) => ({
+                symbol,
+                exchange,
+                timeframe,
+                timestamp: r.timestamp,
+                open: r.open,
+                high: r.high,
+                low: r.low,
+                close: r.close,
+                volume: r.volume,
+              })),
+            );
+            return result;
+          },
+          transformCache: mapCandles,
+          onErrorNoCache: () => ({
+            source: "ccxt" as const,
             exchange,
             symbol,
             timeframe,
-            rows: localCandles.map((c) => ({
-              timestamp: c.timestamp,
-              datetime: new Date(c.timestamp).toISOString(),
-              open: c.open,
-              high: c.high,
-              low: c.low,
-              close: c.close,
-              volume: c.volume,
-            })),
-          };
-        }
-      }
-      // Attempt to fetch fresh data
-      try {
-        const result = await fetchCcxtOhlcv(exchange, symbol, timeframe, limit);
-        // Store candles in local database
-        await context.repos.upsertOhlcvCandles(
-          result.rows.map((r: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }) => ({
-            symbol,
-            exchange,
-            timeframe,
-            timestamp: r.timestamp,
-            open: r.open,
-            high: r.high,
-            low: r.low,
-            close: r.close,
-            volume: r.volume,
-          }))
-        );
-        return result;
-      } catch (error) {
-        // If fetch fails, return local data even if stale
-        if (localCandles.length > 0) {
-          return {
-            source: "ccxt",
-            exchange,
-            symbol,
-            timeframe,
-            rows: localCandles.map((c) => ({
-              timestamp: c.timestamp,
-              datetime: new Date(c.timestamp).toISOString(),
-              open: c.open,
-              high: c.high,
-              low: c.low,
-              close: c.close,
-              volume: c.volume,
-            })),
-          };
-        }
-        // No local data, return empty rows with warning
-        return {
-          source: "ccxt",
-          exchange,
-          symbol,
-          timeframe,
-          rows: [],
-          warning: "Failed to fetch OHLCV data and no local cache available.",
-        };
-      }
+            rows: [],
+            warning: "Failed to fetch OHLCV data and no local cache available.",
+          }),
+        },
+      );
     },
   });
 

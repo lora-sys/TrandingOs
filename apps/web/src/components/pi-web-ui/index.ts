@@ -1,0 +1,19 @@
+export { AppSidebar } from "./app-sidebar";
+export { AppSidebarContent } from "./app-sidebar-content";
+export { ChatItemView } from "./chat-item-view";
+export { CommandPalette } from "./command-palette";
+export { ConnectionDot } from "./connection-dot";
+export { ContextPopover } from "./context-popover";
+export { ExtensionDialogView } from "./extension-dialog";
+export { ImagePreviewStrip } from "./image-preview-strip";
+export { ModelPicker } from "./model-picker";
+export { ProjectLauncher } from "./project-launcher";
+export {
+  PromptAttachmentButton,
+  PromptAttachmentPreview,
+} from "./prompt-attachments";
+export { SessionSidebar } from "./session-sidebar";
+export { SettingsPanel } from "./settings-panel";
+export { SubagentDetailSidebar } from "./subagent-detail-sidebar";
+export { UserMessageView } from "./user-message-view";
+export { WorkspaceStatusFloat } from "./workspace-status-float";
