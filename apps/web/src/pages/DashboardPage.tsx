@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import {
   ActivityIcon,
   BotIcon,
@@ -24,28 +25,31 @@ function StatCard({
   trend?: "up" | "down" | "neutral";
 }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <motion.div
+      className="rounded-lg border bg-card/70 backdrop-blur-xl p-4 border-white/[0.08]"
+      whileHover={{ scale: 1.01 }}
+    >
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground text-xs">{label}</span>
-        <Icon className="size-4 text-muted-foreground" />
+        <Icon className={`size-4 ${label === "思考等级" ? "text-cyan-500/80" : "text-cyan-500/80"}`} />
       </div>
       <div className="mt-1 flex items-baseline gap-2">
         <span className="text-xl font-semibold">{value}</span>
         {trend === "up" && <TrendingUpIcon className="size-3 text-emerald-500" />}
         {trend === "down" && <TrendingDownIcon className="size-3 text-red-500" />}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 export function DashboardPage() {
-  const { data: statusData } = useQuery({
+  const { data: statusData, error: statusError } = useQuery({
     queryKey: ["status"],
     queryFn: () => tradingPiApi.status().catch(() => null),
     refetchInterval: 5000,
   });
 
-  const { data: configData } = useQuery({
+  const { data: configData, error: configError } = useQuery({
     queryKey: ["config"],
     queryFn: () => tradingPiApi.config().catch(() => null),
     refetchInterval: 10000,
@@ -61,6 +65,16 @@ export function DashboardPage() {
     queryFn: () => tradingPiApi.memory().catch(() => null),
   });
 
+  if (statusError || configError) {
+    return (
+      <motion.div className="mx-auto max-w-5xl p-6">
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+          Failed to connect to backend server. Is it running?
+        </div>
+      </motion.div>
+    );
+  }
+
   const agentStatus = statusData?.status === "running" ? "Running" : "Idle";
   const trades = Array.isArray(tradesData) ? tradesData : [];
   const todayTrades = trades.filter((t: any) => {
@@ -74,7 +88,12 @@ export function DashboardPage() {
   const autoCompaction = configData?.autoCompaction ?? true;
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6 space-y-6">
+    <motion.div
+      className="mx-auto w-full max-w-5xl p-6 space-y-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
       {/* Page Header */}
       <div>
         <h1 className="text-2xl font-bold">Dashboard</h1>
@@ -116,7 +135,7 @@ export function DashboardPage() {
       {/* Two-column detail */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Agent Status */}
-        <div className="rounded-lg border bg-card p-4 space-y-3">
+        <div className="rounded-lg border bg-card/70 backdrop-blur-xl p-4 space-y-3 border-white/[0.08]">
           <div className="flex items-center gap-2 font-medium text-sm">
             <BotIcon className="size-4" />
             Agent 状态
@@ -134,7 +153,7 @@ export function DashboardPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Thinking</span>
-              <span>{thinkingLevel}</span>
+              <span className="text-cyan-400">{thinkingLevel}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">自动压缩</span>
@@ -148,7 +167,7 @@ export function DashboardPage() {
         </div>
 
         {/* Recent Trades */}
-        <div className="rounded-lg border bg-card p-4 space-y-3">
+        <div className="rounded-lg border bg-card/70 backdrop-blur-xl p-4 space-y-3 border-white/[0.08]">
           <div className="flex items-center gap-2 font-medium text-sm">
             <TrendingUpIcon className="size-4" />
             最近交易
@@ -176,7 +195,7 @@ export function DashboardPage() {
       </div>
 
       {/* Memory Summary */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
+      <div className="rounded-lg border bg-card/70 backdrop-blur-xl p-4 space-y-3 border-white/[0.08]">
         <div className="flex items-center gap-2 font-medium text-sm">
           <DatabaseIcon className="size-4" />
           记忆摘要
@@ -189,6 +208,6 @@ export function DashboardPage() {
           <p className="text-muted-foreground text-sm">暂无记忆数据</p>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

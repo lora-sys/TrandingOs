@@ -58,6 +58,27 @@ export type ChatItem =
       id: string;
       text: string;
       tone?: SystemTone;
+    }
+  | {
+      kind: "artifact";
+      id: string;
+      artifactId: string;
+      title: string;
+      summary: string;
+      type: string;
+      content?: string;
+      createdAt: string;
+    }
+  | {
+      kind: "plan";
+      id: string;
+      planId: string;
+      title: string;
+      description: string;
+      status: "draft" | "active" | "completed" | "failed";
+      steps?: Array<{ id: string; title: string; status: string; content?: string }>;
+      content?: string;
+      isStreaming?: boolean;
     };
 
 export type RpcEvent = {

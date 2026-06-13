@@ -42,6 +42,7 @@ export class Repositories {
       | "workflows"
       | "timeline_events"
       | "artifacts"
+      | "plans"
       | "approvals"
       | "sessions"
       | "memory_records"
@@ -170,6 +171,48 @@ export class Repositories {
       nowIso(),
     );
     return artifactId;
+  }
+
+  // --- Plans ---
+  createPlan(plan: {
+    id: string;
+    sessionId: string;
+    title: string;
+    description?: string;
+    status?: string;
+    steps?: Array<{ id: string; title: string; status: string; content?: string }>;
+    content?: string;
+  }) {
+    const planId = id("pln");
+    const timestamp = nowIso();
+    this.db.prepare(
+      `INSERT INTO plans (id, session_id, title, description, status, steps, content, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      plan.id, plan.sessionId, plan.title, plan.description || "",
+      plan.status || "draft",
+      JSON.stringify(plan.steps || []),
+      plan.content || "",
+      timestamp, timestamp
+    );
+    return plan.id;
+  }
+
+  updatePlanStatus(id: string, status: string, result?: string) {
+    this.db.prepare(
+      `UPDATE plans SET status = ?, result = COALESCE(?, result), updated_at = ? WHERE id = ?`
+    ).run(status, result ?? null, nowIso(), id);
+  }
+
+  listPlans(sessionId?: string) {
+    if (sessionId) {
+      return this.db.prepare(`SELECT * FROM plans WHERE session_id = ? ORDER BY created_at DESC`).all(sessionId);
+    }
+    return this.db.prepare(`SELECT * FROM plans ORDER BY created_at DESC LIMIT 50`).all();
+  }
+
+  getPlan(id: string) {
+    return this.db.prepare(`SELECT * FROM plans WHERE id = ?`).get(id);
   }
 
   createApproval(approval: {

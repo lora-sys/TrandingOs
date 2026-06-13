@@ -67,6 +67,41 @@ export function syncToItems(
     }
   }
 
+  // Also scan for custom types (artifact/plan entries)
+  for (const entry of entries) {
+    if ((entry as any).customType === "artifact" && (entry as any).artifactId) {
+      const ae = entry as any;
+      if (!items.find((i) => i.kind === "artifact" && i.artifactId === ae.artifactId)) {
+        items.push({
+          kind: "artifact",
+          id: `artifact-${ae.artifactId}`,
+          artifactId: ae.artifactId,
+          title: ae.title || "Artifact",
+          summary: ae.summary || "",
+          type: ae.type || "unknown",
+          content: ae.content,
+          createdAt: ae.timestamp || new Date().toISOString(),
+        });
+      }
+    }
+    if ((entry as any).customType === "plan" && (entry as any).planId) {
+      const pe = entry as any;
+      if (!items.find((i) => i.kind === "plan" && i.planId === pe.planId)) {
+        items.push({
+          kind: "plan",
+          id: `plan-${pe.planId}`,
+          planId: pe.planId,
+          title: pe.title || "Plan",
+          description: pe.description || "",
+          status: pe.status || "draft",
+          steps: pe.steps,
+          content: pe.content,
+          isStreaming: pe.streaming || false,
+        });
+      }
+    }
+  }
+
   return items;
 }
 

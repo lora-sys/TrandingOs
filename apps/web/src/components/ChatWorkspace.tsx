@@ -3,12 +3,16 @@ import {
   BarChart3Icon,
   BrainIcon,
   DownloadIcon,
+  FileIcon,
+  FileTextIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
+  SparklesIcon,
   TerminalIcon,
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Conversation,
@@ -37,6 +41,7 @@ import {
   UserMessageView,
   WorkspaceStatusFloat,
 } from "@/components/pi-web-ui";
+import { ArtifactPanel } from "@/components/ArtifactPanel";
 import {
   processPromptFiles,
   syncToItems,
@@ -55,6 +60,8 @@ import type {
 } from "@/core/types";
 import { tradingPiApi } from "@/api/client";
 import { useSettingsStore } from "@/lib/settingsStore";
+import { ExportMenu } from "@/components/ExportMenu";
+import type { ChatItemForExport } from "@/components/ExportMenu";
 
 export function ChatWorkspace() {
   const queryClient = useQueryClient();
@@ -71,7 +78,6 @@ export function ChatWorkspace() {
   const themeMode = useSettingsStore((s) => s.themeMode);
   const showThinking = useSettingsStore((s) => s.showThinking);
   const setAutoCompaction = useSettingsStore((s) => s.setAutoCompaction);
-  const setAuthEnabled = useSettingsStore((s) => s.setAuthEnabled);
 
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true,
@@ -92,6 +98,10 @@ export function ChatWorkspace() {
   const [lastUsage, _setLastUsage] = useState<Record<string, unknown> | null>(null);
   const [contextWindowSize, setContextWindowSize] = useState(0);
   const [contextOpen, setContextOpen] = useState(false);
+
+  // Artifact panel state
+  const [artifactPanelOpen, setArtifactPanelOpen] = useState(false);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
 
   // SSE refs
   const sseRef = useRef<EventTarget | null>(null);
@@ -140,8 +150,12 @@ export function ChatWorkspace() {
           (sseRef.current as any).abort();
         }
         return { success: true };
-      case "compact":
-        return { success: true, data: {} };
+      case "compact": {
+        return {
+          type: "system_message",
+          content: "Context compaction will be available when the backend compaction endpoint is ready.",
+        };
+      }
       case "set_session_name":
         setSessionName(cmd.name as string);
         return { success: true };
@@ -158,16 +172,121 @@ export function ChatWorkspace() {
         return { success: true };
       case "navigate_tree":
         return { success: true };
-      case "get_auth":
-        return { success: true, data: { configured: false, enabled: false } };
-      case "set_auth":
-        setAuthEnabled(Boolean(cmd.enabled));
-        return { success: true, data: { enabled: cmd.enabled } };
-      case "get_available_models":
-        return { success: true, data: { models: [{ id: "default", provider: "trading-pi" }] } };
-      case "export_html":
-        addSystemMessage("Export not yet available in Trading Pi", "error");
-        return { success: true };
+      case "get_available_models": {
+        // Return real model info from backend config
+        const statusData = await tradingPiApi.status().catch(() => null);
+        const configData = await tradingPiApi.config().catch(() => null);
+        const currentModel = configData?.modelId || statusData?.model || "default";
+        return {
+          success: true,
+          data: {
+            models: [
+              { id: currentModel || "default", provider: "trading-pi", name: currentModel || "Default" },
+              { id: "gpt-4o-mini", provider: "openai", name: "GPT-4o Mini" },
+              { id: "gpt-4o", provider: "openai", name: "GPT-4o" },
+              { id: "deepseek-v4-flash", provider: "deepseek", name: "DeepSeek V4 Flash" },
+            ],
+          },
+        };
+      }
+      case "export_html": {
+        const html = items
+          .filter((item): item is Extract<ChatItem, { kind: "message" }> => item.kind === "message")
+          .map((item) => {
+            const role = item.role === "user" ? "User" : "Assistant";
+            const text = item.text || item.reasoning || "[no content]";
+            return `<div class="message ${role.toLowerCase()}"><strong>${role}:</strong><pre>${text.replace(/</g, "&lt;")}</pre></div>`;
+          })
+          .join("\n");
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Trading Pi Chat Export</title><style>body{font-family:monospace;max-width:800px;margin:0 auto;padding:16px;background:#111;color:#eee}.message{margin:8px 0;padding:12px;border-radius:6px}.user{background:#1a1a2e}.assistant{background:#16213e}pre{white-space:pre-wrap;word-break:break-word}</style></head><body><h1>Trading Pi Chat Export</h1>${html}</body></html>`;
+
+        const blob = new Blob([fullHtml], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `trading-pi-chat-${new Date().toISOString().slice(0,10)}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        return { type: "system_message", content: "Chat exported as HTML file." };
+      }
+      case "export_markdown": {
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const lines: string[] = [
+          `# Trading Pi — Chat Export`,
+          "",
+          `> Exported: ${new Date().toLocaleString()}`,
+          "",
+          "---",
+          "",
+        ];
+        for (const item of items) {
+          if (item.kind === "message" && item.role === "user") {
+            lines.push(`## 👤 User`, "", item.text || "(no content)", "");
+          } else if (item.kind === "message" && item.role === "assistant") {
+            lines.push(`## 🤖 Assistant`, "");
+            if ((item as any).thinking) {
+              lines.push(`<details>`, `<summary>Thinking Process</summary>`, "", "```", (item as any).thinking, "```", "", `</details>`, "");
+            }
+            lines.push(item.text || item.reasoning || "[no content]", "");
+          } else if (item.kind === "tool") {
+            lines.push(`### 🔧 Tool: \`${item.name}\``, "", "**Input:**", "```json", JSON.stringify(item.input ?? {}, null, 2), "```", "");
+          }
+          lines.push("---", "");
+        }
+        const markdown = lines.join("\n");
+        const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `trading-pi-chat-${dateStr}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+        return { type: "system_message", content: "Chat exported as Markdown file." };
+      }
+      case "export_pdf": {
+        // Dynamic import to avoid loading html2pdf until needed
+        const html2pdf = (await import("html2pdf.js")).default;
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const messagesHtml = items
+          .filter((item): item is Extract<ChatItem, { kind: "message" }> => item.kind === "message")
+          .map((item) => {
+            const role = item.role === "user" ? "User" : "Assistant";
+            let content = "";
+            if ((item as any).thinking)
+              content += `<p style="color:#666;font-size:11px;margin:4px 0"><em>Thinking:</em></p><pre style="background:#f5f5f5;padding:8px;border-radius:4px;font-size:11px;white-space:pre-wrap">${((item as any).thinking || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}</pre>`;
+            const text = item.text || item.reasoning || "[no content]";
+            content += `<pre style="white-space:pre-wrap;font-size:12px">${text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}</pre>`;
+            return `<div style="margin:10px 0;padding:12px;border-radius:6px;border-left:3px solid ${item.role === "user" ? "#06b6d4" : "#8b5cf6"};background:#fafafa"><strong style="font-size:11px;text-transform:uppercase;color:${item.role === "user" ? "#06b6d4" : "#8b5cf6"}">${role}</strong>${content}</div>`;
+          })
+          .join("\n");
+
+        const container = document.createElement("div");
+        container.innerHTML = `
+          <div style="font-family:'JetBrains Mono',monospace;max-width:700px;margin:0 auto;padding:32px 24px;color:#1a1a2e">
+            <h1 style="color:#06b6d4;font-size:18px;margin-bottom:4px">Trading Pi — AI Trading Terminal</h1>
+            <p style="color:#888;font-size:11px;margin-bottom:20px">Exported on ${new Date().toLocaleString()}</p>
+            ${messagesHtml}
+          </div>`;
+        document.body.appendChild(container);
+
+        try {
+          await html2pdf()
+            .set({
+              margin: [12, 12],
+              filename: `trading-pi-chat-${dateStr}.pdf`,
+              image: { type: "jpeg", quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true },
+              jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+            })
+            .from(container)
+            .save();
+        } finally {
+          document.body.removeChild(container);
+        }
+
+        return { type: "system_message", content: "Chat exported as PDF file." };
+      }
       case "get_session_stats":
         addSystemMessage(
           [
@@ -231,6 +350,16 @@ export function ChatWorkspace() {
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  // Listen for artifact updates to auto-open panel
+  useEffect(() => {
+    const handler = (e: any) => {
+      setArtifactPanelOpen(true);
+      if (e.detail?.artifactId) setSelectedArtifactId(e.detail.artifactId);
+    };
+    window.addEventListener("pi:artifact_update", handler);
+    return () => window.removeEventListener("pi:artifact_update", handler);
   }, []);
 
   /* ── sendPrompt: structured event processing with syncToItems ── */
@@ -472,6 +601,22 @@ export function ChatWorkspace() {
     }
   }, [addSystemMessage, rpc]);
 
+  const exportMarkdown = useCallback(async () => {
+    try {
+      await rpc({ type: "export_markdown" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    }
+  }, [rpc]);
+
+  const exportPdf = useCallback(async () => {
+    try {
+      await rpc({ type: "export_pdf" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    }
+  }, [rpc]);
+
   const showSessionStats = useCallback(async () => {
     try {
       await rpc({ type: "get_session_stats" });
@@ -543,9 +688,21 @@ export function ChatWorkspace() {
     },
     {
       label: "Export HTML",
-      desc: "Export current session as HTML",
+      desc: "Download conversation as styled HTML",
       icon: DownloadIcon,
       action: exportHtml,
+    },
+    {
+      label: "Export Markdown",
+      desc: "Download conversation as Markdown",
+      icon: FileTextIcon,
+      action: exportMarkdown,
+    },
+    {
+      label: "Export PDF",
+      desc: "Download conversation as PDF",
+      icon: FileIcon,
+      action: exportPdf,
     },
     {
       label: "Session Stats",
@@ -573,13 +730,15 @@ export function ChatWorkspace() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="relative flex h-full gap-0">
+        {/* Main chat area */}
+        <div className="flex min-w-0 flex-1 flex-col">
         {/* Conversation area */}
         <div className="relative min-h-0 flex-1">
           <Conversation className="h-full">
             <ConversationContent className="mx-auto w-full max-w-3xl gap-3 px-4 py-6">
               {items.length === 0 ? (
-                <div className="flex flex-col items-center gap-6 py-12">
+                <motion.div className="flex flex-col items-center gap-6 py-12" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
                   <ConversationEmptyState
                     description="向 Trading Pi 发送交易指令，开始智能交易对话"
                     icon={<TerminalIcon className="size-7" />}
@@ -592,43 +751,57 @@ export function ChatWorkspace() {
                       { label: "模拟交易", prompt: "运行一次模拟交易测试", icon: BrainIcon },
                       { label: "复盘总结", prompt: "总结最近的交易记录并复盘", icon: DownloadIcon },
                     ].map((action) => (
-                      <button
+                      <motion.button
                         key={action.label}
-                        className="flex flex-col items-center gap-2 rounded-lg border bg-card p-4 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                        className="flex flex-col items-center gap-2 rounded-lg border bg-card/70 backdrop-blur-xl border-white/[0.08] p-4 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
                         onClick={() => submitMessage({ text: action.prompt })}
                         type="button"
+                        whileHover={{ scale: 1.04, borderColor: "rgba(6,182,212,0.3)" }}
+                        whileTap={{ scale: 0.97 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
                       >
-                        <action.icon className="size-5 text-muted-foreground" />
+                        <action.icon className="size-5 text-cyan-500/70" />
                         <span>{action.label}</span>
-                      </button>
+                      </motion.button>
                     ))}
                   </div>
-                </div>
+                </motion.div>
               ) : (
-                items.map((item) =>
-                  item.kind === "message" && item.role === "user" ? (
-                    <UserMessageView
-                      item={item as typeof item & { kind: "message"; role: "user" }}
-                      key={item.id}
-                      onCopy={(text) => copyText(text)}
-                      onEdit={advancedFeatures && item.entryId ? handleEditSubmit : undefined}
-                    />
-                  ) : (
-                    <ChatItemView
-                      item={item}
-                      key={item.id}
-                      onCopy={(text) => copyText(text)}
-                      onToggleTool={(id, open) =>
-                        setItems((current) =>
-                          current.map((candidate) =>
-                            candidate.kind === "tool" && candidate.id === id ? { ...candidate, open } : candidate,
-                          ),
-                        )
-                      }
-                      showThinking={showThinking}
-                    />
-                  ),
-                )
+                <motion.div initial="hidden" animate="show" variants={{
+                  hidden: { opacity: 0 },
+                  show: {
+                    opacity: 1,
+                    transition: { staggerChildren: 0.06 }
+                  }
+                }}>
+                  {items.map((item) =>
+                    <motion.div key={item.id} variants={{
+                      hidden: { opacity: 0, y: 12 },
+                      show: { opacity: 1, y: 0, transition: { duration: 0.25 } }
+                    }}>
+                      {item.kind === "message" && item.role === "user" ? (
+                        <UserMessageView
+                          item={item as typeof item & { kind: "message"; role: "user" }}
+                          onCopy={(text) => copyText(text)}
+                          onEdit={advancedFeatures && item.entryId ? handleEditSubmit : undefined}
+                        />
+                      ) : (
+                        <ChatItemView
+                          item={item}
+                          onCopy={(text) => copyText(text)}
+                          onToggleTool={(id, open) =>
+                            setItems((current) =>
+                              current.map((candidate) =>
+                                candidate.kind === "tool" && candidate.id === id ? { ...candidate, open } : candidate,
+                              ),
+                            )
+                          }
+                          showThinking={showThinking}
+                        />
+                      )}
+                    </motion.div>
+                  )}
+                </motion.div>
               )}
             </ConversationContent>
             <ConversationScrollButton />
@@ -650,7 +823,7 @@ export function ChatWorkspace() {
           <div className="mx-auto w-full max-w-3xl px-4 pt-2">
             <div className="flex flex-wrap gap-2">
               {queuedMessages.map((queued) => (
-                <div className="flex items-center gap-2 rounded-md border bg-muted px-2 py-1 text-xs" key={queued.id}>
+                <motion.div className="flex items-center gap-2 rounded-md border bg-muted px-2 py-1 text-xs" key={queued.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}>
                   <span className="text-muted-foreground">Queued</span>
                   <span className="max-w-72 truncate">{queued.message}</span>
                   <button
@@ -661,27 +834,56 @@ export function ChatWorkspace() {
                   >
                     <XIcon className="size-3" />
                   </button>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
         )}
 
         {error && (
-          <div className="mx-auto w-full max-w-3xl px-4 py-2">
+          <motion.div className="mx-auto w-full max-w-3xl px-4 py-2" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} layout>
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive text-sm">
               {error}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Prompt Input */}
         {!viewingHistory ? (
-          <footer className="shrink-0 border-t bg-background/95 px-4 py-3">
+          <footer className="shrink-0 border-t bg-background/80 backdrop-blur-md px-4 py-3">
             <div className="mx-auto w-full max-w-3xl">
+              <div className="mb-2 flex items-center gap-2">
+                <ExportMenu
+                  items={items.map((item) => ({
+                    role: item.kind === "message" && item.role === "user" ? "user" as const
+                      : item.kind === "tool" ? "tool" as const
+                      : item.kind === "system" ? "system" as const
+                      : "assistant" as const,
+                    text: item.kind === "message" ? item.text : item.kind === "system" ? item.text : undefined,
+                    thinking: item.kind === "message" ? (item as any).thinking : undefined,
+                    toolName: item.kind === "tool" ? item.name : undefined,
+                    toolArgs: item.kind === "tool" ? JSON.stringify(item.input) : undefined,
+                    toolResult: item.kind === "tool" ? JSON.stringify(item.output) : undefined,
+                  }))}
+                  filenamePrefix="trading-pi-chat"
+                />
+                <button
+                  onClick={() => setArtifactPanelOpen(!artifactPanelOpen)}
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
+                    artifactPanelOpen
+                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-400"
+                      : "border-white/[0.08] text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
+                  }`}
+                  title="Artifacts"
+                  type="button"
+                >
+                  <SparklesIcon className="size-3.5" />
+                  Artifacts
+                </button>
+              </div>
               <PromptInput
                 accept="image/*"
-                className="rounded-xl border bg-card shadow-sm"
+                className="rounded-xl border bg-card/70 backdrop-blur-xl border-white/[0.08] shadow-sm"
                 globalDrop={true}
                 multiple
                 onSubmit={submitMessage}
@@ -703,12 +905,30 @@ export function ChatWorkspace() {
             </div>
           </footer>
         ) : (
-          <footer className="shrink-0 border-t bg-background/95 px-4 py-3">
+          <footer className="shrink-0 border-t bg-background/80 backdrop-blur-md px-4 py-3">
             <div className="mx-auto w-full max-w-3xl text-center text-muted-foreground text-sm py-4">
               Viewing history
             </div>
           </footer>
         )}
+      </div>
+
+      {/* Artifact Sidebar */}
+      {artifactPanelOpen && (
+        <motion.div
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: 360, opacity: 1 }}
+          transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+          className="shrink-0 overflow-hidden border-l border-white/[0.08]"
+        >
+          <ArtifactPanel
+            open={artifactPanelOpen}
+            onClose={() => setArtifactPanelOpen(false)}
+            selectedArtifactId={selectedArtifactId}
+            onSelectArtifact={setSelectedArtifactId}
+          />
+        </motion.div>
+      )}
       </div>
 
       {/* Floating overlays (portals) */}

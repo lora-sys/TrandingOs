@@ -18,6 +18,25 @@ import type { SkillRegistry } from "../skills/registry.js";
 import type { ArtifactEngine } from "../artifacts/artifact-engine.js";
 import type { WorkflowEngine } from "../workflows/workflow-engine.js";
 
+/** Runtime config overrides (from /api/config) */
+export interface PromptOptions {
+  /** Thinking level: off | minimal | low | medium | high | xhigh */
+  thinkingLevel?: string;
+  /** Model identifier override */
+  modelId?: string;
+  /** Enable/disable auto-compaction (default: true) */
+  autoCompaction?: boolean;
+}
+
+const THINKING_TOKEN_BUDGETS: Record<string, number> = {
+  off: 0,
+  minimal: 1024,
+  low: 4096,
+  medium: 8192,
+  high: 16384,
+  xhigh: 32768,
+};
+
 export class TradingPiAgent {
   private _compactionSummary: string | undefined;
 
@@ -37,6 +56,7 @@ export class TradingPiAgent {
   async prompt(
     input: { message: string; sessionId?: string; parentSessionId?: string; name?: string },
     onStreamEvent?: (event: AgentEvent) => void,
+    options?: PromptOptions,
   ) {
     const session = input.parentSessionId
       ? this.deps.sessions.createFork(input.parentSessionId)
@@ -57,13 +77,26 @@ export class TradingPiAgent {
     }
     const agentSystemPrompt = this.systemPrompt();
     const agentTools = this.deps.skills.toPiTools(baseContext);
+    // Resolve model: runtime override > env default
+    const effectiveModelId = options?.modelId || this.deps.env.openaiModel;
+    const effectiveEnv = effectiveModelId
+      ? { ...this.deps.env, openaiModel: effectiveModelId }
+      : this.deps.env;
+    // Resolve thinking budget from level string
+    const thinkingLevel = options?.thinkingLevel || "medium";
+    const thinkingTokens = THINKING_TOKEN_BUDGETS[thinkingLevel] ?? THINKING_TOKEN_BUDGETS.medium;
     const agent = new Agent({
       sessionId: session.id,
       toolExecution: "sequential",
       initialState: {
         systemPrompt: agentSystemPrompt,
-        model: createTradingPiModel(this.deps.env),
+        model: createTradingPiModel(effectiveEnv),
         tools: agentTools,
+      },
+      thinkingBudgets: {
+        low: THINKING_TOKEN_BUDGETS.low,
+        medium: thinkingTokens,
+        high: THINKING_TOKEN_BUDGETS.high,
       },
       getApiKey: () => this.deps.env.openaiApiKey,
       transformContext: async (messages) => {
@@ -96,7 +129,7 @@ export class TradingPiAgent {
               },
             ],
           },
-          model: createTradingPiModel(this.deps.env),
+          model: createTradingPiModel(effectiveEnv),
         };
       },
       beforeToolCall: async ({ toolCall, args }) => {
@@ -138,8 +171,9 @@ export class TradingPiAgent {
     await agent.prompt(input.message);
 
     // Auto-compaction: check if context needs compaction and generate summary
+    const autoCompaction = options?.autoCompaction !== false; // default: enabled
     const messageCount = agent.state.messages.length;
-    if (messageCount > 50) {
+    if (autoCompaction && messageCount > 50) {
       try {
         const usage = estimateContextTokens(agent.state.messages);
         if (shouldCompact(usage.tokens, 128_000, DEFAULT_COMPACTION_SETTINGS)) {

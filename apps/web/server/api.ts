@@ -154,7 +154,11 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/browser/health" && req.method === "GET") return sendJson(res, { configured: Boolean(env.aioSandboxBaseUrl), baseUrl: env.aioSandboxBaseUrl ?? null, provider: env.aioSandboxBaseUrl ? "aio-sandbox" : "playwright" });
     if (url.pathname === "/api/session/message" && req.method === "POST") {
       const body = await readBody(req);
-      const result = await agent.prompt(body);
+      const result = await agent.prompt(body, undefined, {
+        thinkingLevel: agentConfig.thinkingLevel,
+        modelId: agentConfig.modelId,
+        autoCompaction: agentConfig.autoCompaction,
+      });
       return sendJson(res, result);
     }
 
@@ -179,6 +183,10 @@ const server = createServer(async (req, res) => {
             const data = JSON.stringify(forwarded);
             res.write(`event: ${event.type}\ndata: ${data}\n\n`);
           } catch { /* client may have disconnected */ }
+        }, {
+          thinkingLevel: agentConfig.thinkingLevel,
+          modelId: agentConfig.modelId,
+          autoCompaction: agentConfig.autoCompaction,
         });
 
         // Auto-update session name if it was a new session or still has the default name
@@ -214,6 +222,20 @@ const server = createServer(async (req, res) => {
       return sendJson(res, { sessionId: session.id, messages: sessions.read(session.id).map(toChatMessage) });
     }
     if (url.pathname === "/api/artifacts" && req.method === "GET") return sendJson(res, repos.list("artifacts"));
+
+    // Plans API
+    if (url.pathname === "/api/plans" && req.method === "GET") {
+      const sessionId = url.searchParams.get("sessionId");
+      const plans = repos.listPlans(sessionId ?? undefined);
+      return sendJson(res, plans);
+    }
+    if (url.pathname === "/api/plan" && req.method === "GET") {
+      const id = url.searchParams.get("id");
+      if (!id) return sendJson(res, { error: "Missing id" }, 400);
+      const plan = repos.getPlan(id);
+      if (!plan) return sendJson(res, { error: "Plan not found" }, 404);
+      return sendJson(res, plan);
+    }
 
     const wfMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/run$/);
     if (wfMatch && req.method === "POST") {

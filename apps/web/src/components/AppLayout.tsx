@@ -1,4 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
+import { motion } from "framer-motion";
 import {
   LayoutDashboardIcon,
   MessageSquareIcon,
@@ -9,6 +10,7 @@ import {
   PanelLeftCloseIcon,
   HistoryIcon,
   Trash2Icon,
+  PlusIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
@@ -44,14 +46,23 @@ export function AppLayout({ children }: { children: ReactNode }) {
   });
   const sessions = Array.isArray(sessionsData) ? sessionsData : [];
 
+  /* Health check for connection status */
+  const { data: healthData } = useQuery({
+    queryKey: ["health"],
+    queryFn: () => tradingPiApi.health().catch(() => null),
+    refetchInterval: 10000,
+  });
+  const isOnline = !!healthData;
+
   const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!confirm("Delete this session?")) return;
     try {
       await tradingPiApi.deleteSession(sessionId);
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
     } catch {
-      /* silently fail */
+      alert("Failed to delete session.");
     }
   };
 
@@ -82,8 +93,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <AppSidebar open={sidebarOpen} onToggle={setSidebarOpen} onOpenSettings={useSettingsStore.getState().openSettings}>
         {/* ── Expanded content ── */}
         <div className="flex flex-col gap-0.5 border-b px-3 py-3">
-          <div className="font-medium text-sm">Trading Pi</div>
-          <div className="text-muted-foreground text-xs">AI Trading Terminal</div>
+          <div className="flex items-center gap-2 font-medium text-sm">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-cyan-500" />
+            </span>
+            Trading Pi
+          </div>
+          <div className="text-muted-foreground text-xs">AI Terminal</div>
         </div>
 
         {/* Nav Links */}
@@ -101,8 +118,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     className={cn(
                       "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
                       isActive
-                        ? "bg-accent text-accent-foreground font-medium"
-                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                        ? "bg-cyan-500/10 text-cyan-400 font-medium border-l-2 border-cyan-400 -ml-[1px]"
+                        : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                     )}
                     to={item.to}
                   >
@@ -121,17 +138,34 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-1.5 px-2 py-1.5 text-muted-foreground text-xs font-medium">
               <HistoryIcon className="size-3.5" />
               <span>Sessions</span>
+              <button
+                onClick={() => {
+                  useSettingsStore.getState().setCurrentSessionId(null);
+                  useSettingsStore.getState().setSessionName("");
+                }}
+                className="flex size-5 items-center justify-center rounded border border-white/10 text-muted-foreground transition-colors hover:border-cyan-500/40 hover:text-cyan-400"
+                title="New Session"
+              >
+                <PlusIcon className="size-3" />
+              </button>
               <span className="ml-auto text-[10px]">{sessions.length}</span>
             </div>
             <ul className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
-              {sessions.slice(0, 10).map((s: any) => (
-                <li key={s.id ?? s.name}>
+              {sessions.slice(0, 10).map((s: any, idx: number) => (
+                <motion.li
+                  key={s.id ?? s.name}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, delay: idx * 0.03 }}
+                >
                   <Link
+                    key={s.id}
+                    to="/"
+                    onClick={() => useSettingsStore.getState().setCurrentSessionId(s.id)}
                     className={cn(
                       "flex items-center gap-2 rounded-md px-2 py-1 text-xs truncate transition-colors group",
-                      "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                      "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                     )}
-                    to="/"
                   >
                     <MessageSquareIcon className="size-3 shrink-0" />
                     <span className="truncate flex-1 min-w-0">{s.name ?? s.id ?? "Untitled"}</span>
@@ -144,7 +178,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                       <Trash2Icon className="size-3" />
                     </button>
                   </Link>
-                </li>
+                </motion.li>
               ))}
             </ul>
           </div>
@@ -153,9 +187,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
         {/* Footer */}
         <div className="border-t p-2">
           <div className="flex items-center justify-between">
-            <span className="rounded-md px-2 py-1.5 text-muted-foreground text-xs">
-              v0.1.0
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-md px-2 py-1.5 text-muted-foreground text-xs">
+                v0.1.0
+              </span>
+              <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className={`size-1.5 rounded-full ${isOnline ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
+                {isOnline ? "Online" : "Offline"}
+              </span>
+            </div>
             <button
               className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
               onClick={() => setSidebarOpen(false)}
@@ -169,30 +209,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </AppSidebar>
 
       {/* Main Content Area */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Adaptive Header */}
-        <header
-          className={cn(
-            "flex h-12 shrink-0 items-center border-b px-4 transition-all",
-            sidebarOpen ? "gap-3" : "gap-4",
-          )}
-        >
-          {sidebarOpen ? (
-            <>
-              <span className="font-medium text-sm">Trading Pi</span>
-              <span className="text-muted-foreground text-xs">AI Trading Terminal</span>
-            </>
-          ) : (
-            <>
-              <span className="font-semibold text-sm">Trading Pi</span>
-              <span className="text-muted-foreground text-xs">AI Trading Terminal</span>
-            </>
-          )}
-        </header>
-
-        {/* Page Content */}
-        <main className="min-h-0 flex-1 overflow-auto">{children}</main>
-      </div>
+      <motion.main
+        key={location.pathname}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+        className="min-h-0 flex-1 overflow-auto"
+      >
+        {children}
+      </motion.main>
 
       {/* Global Settings Modal */}
       {settingsOpen && (
@@ -202,11 +227,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
           autoCompaction={autoCompaction}
           onClose={closeSettings}
           onRenameSession={(name) => useSettingsStore.getState().setSessionName(name)}
-          onSetAutoCompaction={async (enabled) =>
-            useSettingsStore.getState().setAutoCompaction(enabled)
-          }
+          onSetAutoCompaction={async (enabled) => {
+            useSettingsStore.getState().setAutoCompaction(enabled);
+            try { await tradingPiApi.setConfig({ autoCompaction: enabled }); } catch { /* non-critical */ }
+          }}
           onSetTheme={(mode) => useSettingsStore.getState().setThemeMode(mode)}
-          onSetThinking={async (level) => useSettingsStore.getState().setThinkingLevel(level)}
+          onSetThinking={async (level) => {
+            useSettingsStore.getState().setThinkingLevel(level);
+            try { await tradingPiApi.setConfig({ thinkingLevel: level }); } catch { /* non-critical */ }
+          }}
           onToggleAuth={() => useSettingsStore.getState().setAuthEnabled(!authEnabled)}
           sessionName={sessionName}
           showThinking={showThinking}

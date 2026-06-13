@@ -15,6 +15,9 @@ interface SettingsState {
   authEnabled: boolean;
   authConfigured: boolean;
 
+  /* ── Session ── */
+  currentSessionId: string | null;
+
   /* ── Actions ── */
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -27,6 +30,7 @@ interface SettingsState {
   setSessionName: (name: string) => void;
   setAuthEnabled: (enabled: boolean) => void;
   setAuthConfigured: (configured: boolean) => void;
+  setCurrentSessionId: (id: string | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -36,14 +40,15 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   themeMode: (() => {
     try { return (localStorage.getItem("pi-theme-mode") as ThemeMode | null) || "dark"; } catch { return "dark"; }
   })(),
-  thinkingLevel: "off",
+  thinkingLevel: (typeof localStorage !== 'undefined' ? localStorage.getItem("trading-pi-thinking-level") : null) || "medium",
   showThinking: (() => {
     try { return localStorage.getItem("pi-show-thinking") !== "false"; } catch { return true; }
   })(),
-  autoCompaction: true,
-  sessionName: "Trading Pi",
+  autoCompaction: (typeof localStorage !== 'undefined' ? localStorage.getItem("trading-pi-auto-compaction") : null) === "false" ? false : true,
+  sessionName: (typeof localStorage !== 'undefined' ? localStorage.getItem("trading-pi-session-name") : null) || "",
   authEnabled: false,
   authConfigured: false,
+  currentSessionId: null,
 
   /* Actions */
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -54,13 +59,23 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     try { localStorage.setItem("pi-theme-mode", mode); } catch {}
     set({ themeMode: mode });
   },
-  setThinkingLevel: (level) => set({ thinkingLevel: level }),
+  setThinkingLevel: (level) => {
+    try { localStorage.setItem("trading-pi-thinking-level", level); } catch {}
+    set({ thinkingLevel: level });
+  },
   setShowThinking: (show) => {
     try { localStorage.setItem("pi-show-thinking", String(show)); } catch {}
     set({ showThinking: show });
   },
-  setAutoCompaction: (enabled) => set({ autoCompaction: enabled }),
-  setSessionName: (name) => set({ sessionName: name }),
+  setAutoCompaction: (enabled) => {
+    try { localStorage.setItem("trading-pi-auto-compaction", String(enabled)); } catch {}
+    set({ autoCompaction: enabled });
+  },
+  setSessionName: (name) => {
+    try { localStorage.setItem("trading-pi-session-name", name); } catch {}
+    set({ sessionName: name });
+  },
   setAuthEnabled: (enabled) => set({ authEnabled: enabled }),
   setAuthConfigured: (configured) => set({ authConfigured: configured }),
+  setCurrentSessionId: (id) => set({ currentSessionId: id }),
 }));
