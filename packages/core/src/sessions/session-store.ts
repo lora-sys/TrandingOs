@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { LocalPaths } from "../config/paths.js";
@@ -76,6 +76,18 @@ export class SessionStore {
 
   updateSessionName(sessionId: string, name: string) {
     this.repos.db.prepare("UPDATE sessions SET name = ? WHERE id = ?").run(name, sessionId);
+  }
+
+  deleteSession(sessionId: string): boolean {
+    const session = this.getSession(sessionId);
+    if (!session) return false;
+    // Delete JSONL file
+    if (existsSync(session.path)) {
+      unlinkSync(session.path);
+    }
+    // Delete SQLite record
+    this.repos.db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+    return true;
   }
 
   createFork(parentSessionId: string): { id: string; name: string; path: string; createdAt: string; parentSessionId: string } {

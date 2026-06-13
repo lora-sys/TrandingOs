@@ -1,20 +1,59 @@
 // API client using fetch — not serverFn imports (server-only)
 const BASE = `http://localhost:${(import.meta as any).env.TRADING_PI_API_PORT ?? 8787}`;
 
-async function rpc(path: string, body?: unknown) {
-  const res = await fetch(`${BASE}${path}`, body ? {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  } : undefined);
-  if (!res.ok) throw new Error(`${path}: ${res.status}`);
-  return res.json();
+// Connection health tracking
+let _isOnline = false;
+let _healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+const _listeners = new Set<(online: boolean) => void>();
+
+export function isApiOnline(): boolean { return _isOnline; }
+export function onApiStatusChange(fn: (online: boolean) => void): () => void {
+  _listeners.add(fn);
+  return () => _listeners.delete(fn);
+}
+
+async function checkHealth() {
+  try {
+    const res = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(3000) });
+    _isOnline = res.ok;
+  } catch {
+    _isOnline = false;
+  }
+  _listeners.forEach(fn => fn(_isOnline));
+}
+
+// Start health check loop
+if (typeof window !== 'undefined') {
+  checkHealth();
+  _healthCheckTimer = setInterval(checkHealth, 10000);
+}
+
+async function rpc(path: string, body?: unknown, method: "GET" | "POST" | "DELETE" = body ? "POST" : "GET") {
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method,
+      ...(body && method !== "DELETE" ? {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      } : {}),
+    });
+    if (!res.ok) throw new Error(`${path}: ${res.status}`);
+    return res.json();
+  } catch (err) {
+    _isOnline = false;
+    _listeners.forEach(fn => fn(false));
+    throw err;
+  }
 }
 
 export const tradingPiApi = {
   health: () => rpc("/api/health"),
   status: () => rpc("/api/status"),
   aiPing: () => rpc("/api/ai/ping"),
+  /** Runtime config (thinking level, model, auto-compaction) */
+  config: () => rpc("/api/config"),
+  setConfig: (body: { thinkingLevel?: string; modelId?: string; autoCompaction?: boolean }) =>
+    rpc("/api/config", body),
   sendMessage: (message: string, sessionId?: string) => rpc("/api/session/message", { message, sessionId }),
   /** SSE streaming: returns an EventTarget that emits agent events + 'done' */
   sendMessageStream: (message: string, sessionId?: string, files?: File[]) => {
@@ -89,6 +128,7 @@ export const tradingPiApi = {
     return target;
   },
   sessions: () => rpc("/api/sessions"),
+  deleteSession: (sessionId: string) => rpc(`/api/sessions/${sessionId}`, undefined, "DELETE"),
   messages: (sessionId: string) => rpc(`/api/messages?sessionId=${sessionId}`),
   skills: () => rpc("/api/skills"),
   workflows: () => rpc("/api/workflows"),

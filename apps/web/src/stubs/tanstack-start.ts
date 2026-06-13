@@ -1,1 +1,0 @@
-export function createServerFn(opts: any) { const fn = async (...args: any[]) => { return fetch("/api/call", { method: "POST", body: JSON.stringify({ fn: opts.name, args }) }).then(r => r.json()); }; fn.handler = async (h: any) => h; fn.validator = (v: any) => fn; fn.method = opts.method; return fn; }

@@ -1,8 +1,8 @@
-import React from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
-import { router } from "./router.js";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { router } from "./router";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -14,12 +14,10 @@ const queryClient = new QueryClient({
   },
 });
 
-createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+createRoot(document.getElementById("root") as HTMLElement).render(
+  <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <div className="dark">
-        <RouterProvider router={router} />
-      </div>
+      <RouterProvider router={router} />
     </QueryClientProvider>
-  </React.StrictMode>,
+  </StrictMode>,
 );

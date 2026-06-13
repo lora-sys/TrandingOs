@@ -1,3 +1,3 @@
 // Compatibility shim
-import { tradingPiApi } from "../api.js";
-export { tradingPiApi };
+import { tradingPiApi, isApiOnline, onApiStatusChange } from "../api.js";
+export { tradingPiApi, isApiOnline, onApiStatusChange };
