@@ -1,6 +1,6 @@
 # Deployment Guide
 
-**Last verified**: 2026-06-11
+**Last verified**: 2026-06-14
 
 ## Prerequisites
 
@@ -34,6 +34,12 @@ npm run build
 npm run check
 ```
 
+### Post-Refactor Build Notes
+
+- **`npm run check`** verifies all packages including the refactored frontend (monorepo-wide type checking)
+- **Code-splitting**: production build now produces multiple lazy-loaded chunks via Vite's automatic chunk splitting
+- **Chunk naming**: Vite follows route patterns — each route becomes its own async chunk for optimal loading
+
 ## Production
 
 ### Via Docker
@@ -61,16 +67,29 @@ The API server starts on port 8787 by default (configurable via `TRADING_PI_API_
 
 ## Environment Variables
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `TRADING_PI_API_PORT` | `8787` | API server port |
-| `AI_API_KEY` | — | AI provider API key |
-| `AI_BASE_URL` | — | AI provider base URL |
-| `AI_MODEL` | `deepseek-v4-flash` | AI model name |
-| `LANGFUSE_PUBLIC_KEY` | — | Langfuse telemetry (optional) |
-| `LANGFUSE_SECRET_KEY` | — | Langfuse telemetry (optional) |
-| `LANGFUSE_BASE_URL` | — | Langfuse telemetry (optional) |
-| `AIO_SANDBOX_BASE_URL` | — | AIO Sandbox endpoint (optional) |
+Full reference in [`apps/web/.env.example`](../apps/web/.env.example):
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `OPENAI_API_KEY` | **Yes** | — | AI model provider API key |
+| `OPENAI_BASE_URL` | No | — | AI model endpoint base URL |
+| `OPENAI_MODEL` | No | — | Default model identifier |
+| `TRADING_PI_DATA_DIR` | No | `.trading-pi` | Local data root directory |
+| `TRADING_PI_API_PORT` | No | `8787` | Backend API server port |
+| `TRADING_PI_WEB_PORT` | No | `5173` | Frontend dev server port |
+| `TRADING_PI_DEFAULT_EXCHANGE` | No | `binance` | Default CCXT exchange |
+| `TRADING_PI_EXCHANGE_FALLBACKS` | No | `okx,bybit,coinbase,kraken` | Fallback exchange list |
+| `TRADING_PI_TRADING_MODE` | No | `paper` | Trading mode (paper/live) |
+| `EXA_API_KEY` | No | — | Exa search API key |
+| `TAVILY_API_KEY` | No | — | Tavily search API key |
+| `JINA_API_KEY` | No | — | Jina search/read API key |
+| `COINMARKETCAP_API_KEY` | No | — | CoinMarketCap / CoinGecko fallback |
+| `LANGFUSE_PUBLIC_KEY` | No | — | Langfuse telemetry (optional) |
+| `LANGFUSE_SECRET_KEY` | No | — | Langfuse telemetry (optional) |
+| `LANGFUSE_HOST` | No | — | Langfuse telemetry host (optional) |
+| `AIO_SANDBOX_BASE_URL` | No | `http://localhost:8080` | Browser sandbox endpoint (optional) |
+
+Environment loading: [`packages/core/src/config/env.ts`](../packages/core/src/config/env.ts) — supports `.env` files in `apps/web/`, project root, or parent directories.
 
 ## Data Storage
 
@@ -97,3 +116,14 @@ After deployment, verify:
 curl http://localhost:8787/api/health
 # → { "ok": true, "name": "Trading Pi" }
 ```
+
+## Project Documentation
+
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | Full system architecture (v5.0) |
+| [FRONTEND.md](./FRONTEND.md) | Frontend architecture details (v5.0) |
+| [BACKEND.md](./BACKEND.md) | Backend architecture & API server |
+| [API.md](./API.md) | REST API reference |
+| [WORKFLOWS.md](./WORKFLOWS.md) | Development workflows |
+| `adr/` | Architecture Decision Records (001–010) |

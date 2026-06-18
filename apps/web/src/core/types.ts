@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 
 export type ConnectionState = "connecting" | "connected" | "disconnected";
 export type ThemeMode = "system" | "light" | "dark";
+// @deprecated — legacy pi-web-ui type, no consumers
 export type AppView = "chat" | "projects";
 export type SystemTone = "info" | "success" | "error";
 export type ToolState = "input-streaming" | "input-available" | "output-available" | "output-error";
@@ -79,6 +80,21 @@ export type ChatItem =
       steps?: Array<{ id: string; title: string; status: string; content?: string }>;
       content?: string;
       isStreaming?: boolean;
+    }
+  | {
+      kind: "decision";
+      id: string;
+      decision: unknown;
+    }
+  | {
+      kind: "alpha-signal";
+      id: string;
+      signal: unknown;
+    }
+  | {
+      kind: "research-report";
+      id: string;
+      report: unknown;
     };
 
 export type RpcEvent = {
@@ -191,6 +207,7 @@ export type SubagentViewState = {
   compactionCount?: number;
   isBackground?: boolean;
   source?: "foreground" | "background" | "scheduled" | "history" | "event";
+  recentEvents?: Array<{ type?: string; payload?: unknown; timestamp?: string | number }>;
   updatedAt: number;
 };
 
@@ -220,6 +237,7 @@ export type SearchResult = {
   matches?: Array<{ snippet?: string }>;
 };
 
+// @deprecated — legacy pi-web-ui type, no consumers
 export type RunningInstance = {
   port: number;
   sessionFile: string;

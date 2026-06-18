@@ -1,3 +1,11 @@
+> **⚠️ DEPRECATED (v5.0 — 2026-06-14)**
+>
+> This package has been consolidated into `@trading-pi/core`. See `packages/core/src/research/bundle.ts`.
+> The original package is kept as a backward-compat shim only.
+> **New code should import from `@trading-pi/core` directly.**
+>
+> See ADR-010 for details.
+
 # Research Hub (`packages/research-hub`)
 
 **Status**: Canonical — matches current code
@@ -20,3 +28,10 @@ Orchestrates multi-source research bundles. Coordinates search, browser, market 
 
 ## Integration
 Triggered by `/research <symbol>` slash command and research workflow. Consumes Search Hub, Browser Layer, Market skills, and Memory Engine.
+
+## Migration
+
+| Before (v4.x) | After (v5.0+) |
+|---------------|---------------|
+| `import { ResearchBundle } from "@trading-pi/research-hub"` | `import { ResearchBundle } from "@trading-pi/core/src/research/bundle"` |
+| `import { createResearchBundle } from "@trading-pi/research-hub"` | `import { createResearchBundle } from "@trading-pi/core/src/research/bundle"` |

@@ -10,6 +10,7 @@ import {
 } from "@/components/ai-elements/message";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
+import { formatUsd, formatScore, formatPercent } from "@/lib/formatters";
 import {
   Plan,
   PlanHeader,
@@ -25,8 +26,8 @@ import {
   ArtifactDescription,
   ArtifactActions,
   ArtifactAction,
-  ArtifactContent,
 } from "@/components/ai-elements/artifact";
+import { AlphaRadarCard, DecisionCard, ResearchReportView, type DecisionCardData } from "@/components/mvp";
 import { cn } from "@/lib/utils";
 
 import { formatToolSummary, isToolExpandable } from "../../core/tool-summary";
@@ -110,38 +111,42 @@ export function ChatItemView({
             </span>
           </PlanHeader>
           <PlanContent>
-            {item.content ? (
-              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                {item.content}
-              </pre>
-            ) : item.steps ? (
-              <div className="space-y-2">
-                {item.steps.map((step, i) => (
-                  <div key={step.id || i} className="flex items-start gap-2 text-xs">
-                    <span
-                      className={`size-5 mt-0.5 flex shrink-0 items-center justify-center rounded-full text-[10px] font-medium ${
-                        step.status === "done"
-                          ? "bg-emerald-500/15 text-emerald-400"
+            <div className="space-y-3">
+              {item.steps && (
+                <div className="space-y-2">
+                  {item.steps.map((step, i) => (
+                    <div key={step.id || i} className="flex items-start gap-2 text-xs">
+                      <span
+                        aria-label={`${step.title}: ${step.status}`}
+                        className={`size-5 mt-0.5 flex shrink-0 items-center justify-center rounded-full text-[10px] font-medium ${
+                          step.status === "done"
+                            ? "bg-emerald-500/15 text-emerald-400"
+                            : step.status === "running"
+                              ? "bg-cyan-500/15 text-cyan-400 animate-pulse"
+                              : step.status === "error"
+                                ? "bg-red-500/15 text-red-400"
+                                : "bg-white/[0.08] text-muted-foreground"
+                        }`}
+                      >
+                        {step.status === "done"
+                          ? "\u2713"
                           : step.status === "running"
-                            ? "bg-cyan-500/15 text-cyan-400 animate-pulse"
+                            ? "\u2026"
                             : step.status === "error"
-                              ? "bg-red-500/15 text-red-400"
-                              : "bg-white/[0.08] text-muted-foreground"
-                      }`}
-                    >
-                      {step.status === "done"
-                        ? "\u2713"
-                        : step.status === "running"
-                          ? "\u2026"
-                          : step.status === "error"
-                            ? "!"
-                            : String(i + 1)}
-                    </span>
-                    <span className="text-muted-foreground">{step.title}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+                              ? "!"
+                              : String(i + 1)}
+                      </span>
+                      <span className="text-muted-foreground">{step.title}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {item.content && (
+                <pre className="whitespace-pre-wrap border-t border-white/[0.08] pt-3 font-mono text-xs leading-relaxed">
+                  {item.content}
+                </pre>
+              )}
+            </div>
           </PlanContent>
         </Plan>
       </div>
@@ -170,12 +175,48 @@ export function ChatItemView({
           </ArtifactHeader>
           <ArtifactActions>
             <ArtifactAction tooltip="View full" label="View" icon={ChevronRightIcon} />
-            <ArtifactAction tooltip="Type" label={item.type} />
+            <span className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+              {item.type || "artifact"}
+            </span>
           </ArtifactActions>
         </Artifact>
         <div className="mt-1 text-[10px] text-muted-foreground">
           {new Date(item.createdAt).toLocaleTimeString()}
         </div>
+      </div>
+    );
+  }
+
+  if (item.kind === "decision") {
+    return (
+      <div className="my-2 w-full max-w-[95%]">
+        <DecisionCard decision={item.decision as DecisionCardData} />
+      </div>
+    );
+  }
+
+  if (item.kind === "alpha-signal") {
+    const signal = item.signal as Record<string, unknown>;
+    return (
+      <div className="my-2 w-full max-w-sm">
+        <AlphaRadarCard
+          category={stringValue(signal.category ?? signal.source, "signal")}
+          change24h={formatPercent(signal.change24h ?? signal.change)}
+          currentValue={stringValue(signal.currentValue ?? signal.value ?? signal.odds, "") || formatScore(signal.score)}
+          reasoning={stringValue(signal.reasoning ?? signal.summary, "")}
+          riskRating={numericValue(signal.risk ?? signal.riskScore, 3)}
+          source={stringValue(signal.source, "alpha")}
+          title={stringValue(signal.title ?? signal.question, "Untitled signal")}
+          volume={formatUsd(signal.volume ?? signal.volumeUsd)}
+        />
+      </div>
+    );
+  }
+
+  if (item.kind === "research-report") {
+    return (
+      <div className="my-2 w-full max-w-[95%]">
+        <ResearchReportView report={item.report} />
       </div>
     );
   }
@@ -221,4 +262,13 @@ export function ChatItemView({
       )}
     </Message>
   );
+}
+
+function stringValue(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function numericValue(value: unknown, fallback: number) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
 }

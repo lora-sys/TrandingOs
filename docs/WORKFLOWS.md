@@ -1,6 +1,7 @@
 # Trading Pi — Workflows & Development Playbook
 
-**Last verified**: 2026-06-11
+**Version**: 1.1 | **Post-Architecture-Review v5.0**
+**Last verified**: 2026-06-14
 **Source**: Git history analysis + code structure
 
 ## Workflows
@@ -42,6 +43,35 @@ Each skill:
 4. Optionally writes to domain memory
 5. Optionally creates artifact
 6. Returns result
+
+## Post-Refactor Development Workflow (v5.0)
+
+### Architecture Review Process
+Run the `improve-codebase-architecture` skill to identify refactoring candidates across the codebase. The skill analyzes domain language in CONTEXT.md, documented decisions in docs/adr/, and coupling patterns to produce a prioritized list of improvement opportunities.
+
+### Frontend Module Extraction Pattern
+When extracting logic from God components, follow the hook/service pattern established in ADR-010:
+
+| Logic Type | Target Location | Example |
+|---|---|---|
+| React stateful logic | `hooks/useXxx.ts` custom hook | `hooks/useTradingView.ts` |
+| Pure logic without React | `lib/xxxService.ts` or `lib/xxx-utils.ts` | `lib/marketDataService.ts` |
+| Shared sub-components | `pages/feature/components.tsx` | `pages/trading/components.tsx` |
+| Domain utilities | `pages/feature/feature-utils.ts` | `pages/trading/trading-utils.ts` |
+
+### Code-Splitting Convention
+New route pages must use `React.lazy()` + `withSuspense()` wrapper for code splitting. Reference implementation: `apps/web/src/router.tsx`. This ensures route-level bundles are loaded on demand rather than in the initial payload.
+
+### State Management Rule
+- **Shared UI state** (across components) → Zustand store (e.g., `settingsStore.ts`)
+- **Local-only state** (single component) → `useState` / `useReducer`
+- Avoid prop-drilling for state that is used in 3+ components
+
+### Documentation Sync Rule
+When code structure changes (new modules, moved files, renamed exports), update all three documents in sync:
+1. `docs/ARCHITECTURE.md` — module dependency graph & layer boundaries
+2. `docs/FRONTEND.md` — component tree & routing structure
+3. `docs/WORKFLOWS.md` — this document (development conventions)
 
 ## Conventions
 

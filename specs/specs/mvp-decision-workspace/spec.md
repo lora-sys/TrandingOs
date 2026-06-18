@@ -101,7 +101,7 @@ The Dashboard SHALL be the first screen users see. It MUST contain:
 1. **Alpha Radar Section**: Auto-scanned Top5 opportunity cards
    - Each card shows: event/market name, current probability/odds, volume, 24h change, risk rating (stars), source tag
    - Cards are clickable → navigate to Workspace (new or existing) pre-filled with context
-   - Data sources: Polymarket (prediction odds) + Exa (news signals) + Reddit (community buzz)
+   - Data sources: Polymarket (prediction odds) + **Exa MCP** (news signals) + Reddit (community buzz)
    - Auto-refresh every 5 minutes
    - Styling: glassmorphism cards per design.md (bg-card/70, backdrop-blur-xl, border-white/[0.08])
 
@@ -186,7 +186,7 @@ Each Workspace contains 5 views:
   - Export menu (HTML/Markdown/PDF) exports this workspace's research only
 - **Mode B: Deep Research** (NEW — see REQ-MVP-11 for full spec)
   - Autonomous multi-step research agent triggered by "Deep Research" button
-  - Runs ReAct loop: Question → Search(Exa) → Read(Jina) → Analyze(Reddit+Polymarket) → Synthesize → Report
+  - Runs ReAct loop: Question → **Search(Exa MCP)** → Read(Jina) → Analyze(Reddit+Polymarket) → Synthesize → Report
   - Real-time progress panel showing which step is running
   - Output: structured Research Report artifact saved to workspace
   - Report includes: Executive Summary, Key Findings, Data Sources, Supporting Evidence, Counter-arguments, Risk Factors, Conclusion
@@ -217,7 +217,7 @@ Each Workspace contains 5 views:
 - **WHEN** user creates workspace "世界杯2026"
 - **AND** clicks "Start Deep Research" button in Overview tab
 - **THEN** Deep Research Agent launches autonomous research session:
-  - Step 1: Searches Exa for "World Cup 2026 betting odds predictions"
+  - Step 1: Searches **Exa MCP** for "World Cup 2026 betting odds predictions"
   - Step 2: Reads top 5 articles via Jina Reader
   - Step 3: Scans Reddit r/soccer for community sentiment
   - Step 4: Fetches Polymarket World Cup markets data
@@ -260,7 +260,7 @@ interface DecisionRecord {
 1. User asks in Research tab: "应该买法国吗？" or "give me a decision on ETH"
 2. Agent calls `decision.analyze` tool internally:
    - Fetches current market data (Polymarket odds or CoinGecko price)
-   - Searches Exa for recent news about the topic
+   - Searches **Exa MCP** for recent news about the topic
    - Scans Reddit for community sentiment
    - Evaluates risk factors
 3. Agent outputs structured Decision Card using new `DecisionCard` component (renders in chat)
@@ -289,7 +289,7 @@ A new workflow `alpha.radar.scan` SHALL be implemented:
 
 **Process**:
 1. Scan Polymarket trending markets (volume > $50K, settling < 7 days)
-2. Scan Exa for breaking news (crypto/prediction/politics keywords, last 24h)
+2. Scan **Exa MCP** for breaking news (crypto/prediction/politics keywords, last 24h)
 3. Scan Reddit r/CryptoCurrency + r/PredictionMarkets hot posts (last 24h)
 4. Cross-reference: match news/events to relevant markets
 5. Score each opportunity: (volume_weight * 0.4 + novelty_weight * 0.3 + sentiment_weight * 0.3)
@@ -373,7 +373,7 @@ Settings page SHALL upgrade from PlaceholderStub to functional configuration UI:
 
 **Sections**:
 1. **AI Model**: Model selector (from /api/config), Thinking Level slider, Show Thinking toggle
-2. **Data Sources**: API key inputs (OpenAI, Exa, Jina, Reddit client-id, Polymarket [optional], OpenRouter [for Deep Research])
+2. **Data Sources**: API key inputs (OpenAI, **Exa MCP** (optional — free mode available), Jina, Reddit client-id, Polymarket [optional], OpenRouter [for Deep Research])
 3. **Trading**: Default position size, max positions, daily loss limit, auto-compaction toggle
 4. **Appearance**: Theme (dark/light), Font size, Sidebar collapsed default
 5. **User Rules**: Custom rules editor (text area, one rule per line)
@@ -401,7 +401,7 @@ ReAct Loop (autonomous, default 5 iterations, max 10):
   ┌─ Iteration N:
   │   ├─ THINK: What do I need to know next?
   │   ├─ ACT: Call tool(s):
-  │   │   ├─ exa.search() — Web articles/news (general web)
+  │   │   ├─ mcp.exa.web_search — Web articles/news (via Exa MCP)
   │   │   ├─ jina.read() — Full content of discovered URLs
   │   │   ├─ reddit.hot/search() — Community sentiment
   │   │   ├─ semantic_scholar.search() — Academic papers [NEW]
@@ -434,7 +434,7 @@ Toolbar: [Return to Chat] [Ask Follow-up] [Generate Decision] [Export] [Copy Lin
 
 | Tool | Skill | Data Source | Purpose |
 |------|-------|-------------|---------|
-| `exa.search()` | search.exa | Exa API | Web news, analysis, opinions |
+| `mcp.exa.web_search` | search.exa | **Exa MCP Server** (free tier: 1K/mo, no key needed for basic mode) | Web news, analysis, opinions, code search, contents extraction |
 | `jina.read()` | reader.jina | Jina API | Full page content extraction |
 | `reddit.hot/search()` | community.reddit | Reddit JSON API | Community sentiment, discussions |
 | `semantic_scholar.search()` | academic.semanticscholar | Semantic Scholar API | Academic papers, TLDR summaries, citations [NEW] |
@@ -458,7 +458,7 @@ interface DeepResearchInput {
 **Process** (Built-in Mode — fully autonomous):
 1. **Decompose**: Agent breaks research question into 3-5 sub-questions
 2. **Search Phase** (parallel where possible):
-   - Exa search for each sub-question (news, analysis, opinions)
+   - Exa **MCP** search for each sub-question (news, analysis, opinions)
    - Semantic Scholar search for academic papers on topic
    - Crossref search for recent publications
    - Reddit search for community discussions
@@ -521,7 +521,7 @@ Research tab has two modes: **Chat** (default) | **Deep Research** (toggle switc
 │                                                      │
 │ ┌─ Step 1: Decompose research question ............✓ │
 │ │   Generated 4 sub-questions                         │
-│ ├─ Step 2: Search Exa for news & analysis ..........✓ │
+│ ├─ Step 2: Search **Exa MCP** for news & analysis ..........✓ │
 │ │   Found 15 articles, selected top 8                │
 │ ├─ Step 3: Search Semantic Scholar ..................✓ │
 │ │   Found 12 relevant papers (AI TLDRs loaded)       │
@@ -549,13 +549,13 @@ Research tab has two modes: **Chat** (default) | **Deep Research** (toggle switc
 │ 📑 ETH Price Outlook         │                               │
 │                             │  # Execution Summary           │
 │ ▼ Executive Summary         │  This report analyzed...       │
-│   ▼ Key Findings            │  Tools: Exa, Semantic Scholar, │
+│   ▼ Key Findings            │  Tools: **Exa MCP**, Semantic Scholar, │
 │     ✓ Finding 1             │  Reddit, Jina, Polymarket      │
 │     ✓ Finding 2             │  Steps: 7 | Sources: 23 URLs   │
 │     ✓ Finding 3             │                               │
 │     ○ Finding 4             │  ---                          │
 │   ▼ Data Sources            │  ## Key Findings              │
-│     Exa (8 articles)        │                               │
+│     **Exa MCP** (8 articles)        │                               │
 │     Semantic Scholar (12)   │  ### 1. Fed Rate Cut = Bullish │
 │     Reddit (13 threads)     │  **Evidence**: "Historically..."│
 │     Polymarket (3 markets)  │  **Source**: [CoinDesk](url)   │
@@ -622,7 +622,7 @@ GET /api/research/sessions/:id       // Single session status + report
 - **AND** user clicks "Start" (no config needed)
 - **THEN** progress panel shows DeepResearch-style step flow:
   - Step 1✓ Decompose into sub-questions
-  - Step 2✓ Search Exa (news, odds analysis)
+  - Step 2✓ Search **Exa MCP** (news, odds analysis)
   - Step 3✓ Search Semantic Scholar (academic sports prediction models)
   - Step 4✓ Search Reddit (r/soccer community sentiment)
   - Step 5○ Reading URLs via Jina (current, with live preview)
@@ -932,7 +932,7 @@ type EventCategory =
 // --- Category 1: Tool Calls ---
 type ToolCallEvent = TimelineEvent & {
   category: "tool_call";
-  toolName: string;         // e.g., "exa.search", "jina.read", "polymarket.detail"
+  toolName: string;         // e.g., "mcp.exa.web_search", "jina.read", "polymarket.detail"
   inputSummary: string;     // Truncated input (e.g., 'query="ETH price"')
   outputSummary: string;    // Truncated output (e.g., 'found 12 results')
   tokenCost?: number;
@@ -1171,33 +1171,50 @@ ruleCompliance?: {
 
 ---
 
-### REQ-MVP-19: Event Feed (Today's Reminders — TradingEconomics + CoinMarketCal)
+### REQ-MVP-19: Event Feed (Today's Reminders - **FRED + CoinMarketCal, 100% FREE**)
 
-> Dashboard "Today's Reminders" section needs real event data, not placeholder.
+> Dashboard "Today's Reminders" section needs real event data. **All data sources are 100% FREE and OPEN. No paid services required.**
 
-#### 19a: TradingEconomics Skill (`events.tradingeconomics`)
+#### 19a: FRED API Skill (`events.fred`) - **100% FREE (Federal Reserve Official Database)**
 
-**Provider**: TradingEconomics API
-**API**: `https://api.tradingeconomics.com/`
-**Coverage**: FOMC meetings, CPI releases, Non-Farm Payrolls, GDP data, interest rate decisions
-**Cost**: Free developer tier available
-**Use case**: Macro events that impact both crypto and prediction markets (especially Polymarket macro markets)
+**Provider**: Federal Reserve Bank of St. Louis (FRED) - Official US Federal Reserve database
+**API**: `https://api.stlouisfed.org/fred/`
+**Coverage**: **840K+ time series**, 118+ data source agencies, **completely free - no paid plans exist**
+**Cost**: **100% FREE**. API key required (free to generate in 30 seconds). Rate limit: 120 req/min.
+**Why FRED over TradingEconomics**: TradingEconomics costs $149-199/month after trial. FRED is the gold standard for free macroeconomic data with zero cost.
 
 **Methods**:
 ```typescript
-tradingeconomics.calendar(upcoming?, country?)  // Economic calendar events
-tradingeconomics.news(category?)                  // Latest economic news
+fred.calendar(releaseDate?, realtimeStart?, realtimeEnd?, limit?)  // Economic release calendar
+fred.series(seriesId, ...args)    // Time series data for a specific indicator
+fred.search(searchText, limit?)   // Search across all 840K+ series
 ```
 
-**Returns**: Event[] { title, date, country, importance(low/medium/high), category, forecast, previous, actual? }
+**Returns**: FredEvent[] { id, title, date, importance, category(cpi/unemployment/gdp/rate_decision/etc), source, release_time }
 
-**Skill Registration**: `events.tradingeconomics` in default-skills.ts
+**Key Series IDs for Trading Pi**:
+| Indicator | FRED Series ID |
+|-----------|---------------|
+| Fed Funds Target | `FEDFUNDS` / `DFEDTARU` |
+| CPI | `CPIAUCSL` |
+| Core PCE | `PCEPILFE` |
+| Non-Farm Payrolls | `PAYEMS` |
+| Unemployment Rate | `UNRATE` |
+| GDP | `GDP` |
 
-#### 19b: CoinMarketCal Skill (`events.coinmarketcal`)
+**Skill Registration**: `events.fred` in default-skills.ts
 
-**Provider**: CoinMarketCal API
-**Coverage**: Token listings, unlocks, airdrops, upgrades, exchange listings, project events
-**Cost**: Free tier available
+**FRED API Key Setup (one-time, 30 seconds)**:
+1. Go to https://fred.stlouisfed.org/docs/api/api_key.html
+2. Click "Request API Key" -> fill email -> key delivered instantly
+3. Paste into `.env`: `FRED_API_KEY=your_key_here`
+4. Done. No payment, no trial expiration, no limits beyond 120 req/min
+
+#### 19b: CoinMarketCal Skill (`events.coinmarketcal`) - **FREE via RapidAPI**
+
+**Provider**: CoinMarketCal (via RapidAPI)
+**Coverage**: Crypto-native events: token listings, unlocks, airdrops, upgrades, exchange listings
+**Cost**: Free tier on RapidAPI (no credit card needed)
 **Use case**: Crypto-native events for Alpha Radar discovery
 
 **Methods**:
@@ -1212,33 +1229,915 @@ coinmarketcal.today()                          // Events happening today
 
 #### 19c: Dashboard Integration
 
-**"Today's Reminders" section** on Dashboard:
-```
-┌─ Today's Reminders ────────────────────────┐
-│ 📅 Macro Events                             │
-│   🔴 FOMC Rate Decision    Today 14:00 ET  │
-│   🟡 CPI Data Release      Tomorrow 08:30 │
-│                                             │
-│ 🪙 Crypto Events                            │
-│   🟢 ETH Unlock           Today 12:00 UTC  │
-│   🔵 SOL Binance Listing  In 3 days        │
-│                                             │
-│ [View Full Calendar →]                      │
-└─────────────────────────────────────────────┘
-```
-- Fetches from both sources on Dashboard mount (cached 30min)
-- Macro events shown with importance color (🔴 high / 🟡 medium / 🟢 low)
-- Crypto events shown with type icon
+**"Today's Reminders" section** on Dashboard (ALL FREE data sources):
+- Macro events from **FRED API** (Federal Reserve, free) + Crypto events from **CoinMarketCal** (free via RapidAPI)
+- Macro events shown with importance color coding ([RED] high / [YEL] medium / [GRN] low)
+- Crypto events shown with type icons
+- Events cached 30min, refreshes on Dashboard mount
 - "View Full Calendar" links to external source or expands inline
 - Events also feed into Alpha Radar as context ("upcoming FOMC may impact odds")
 
-#### Scenario: Dashboard shows real events
+#### Scenario: Dashboard shows real events (ALL FREE)
 - **WHEN** user opens Dashboard
-- **THEN** "Today's Reminders" shows real events from TradingEconomics + CoinMarketCal
+- **THEN** "Today's Reminders" shows real events from **FRED (macro, free)** + **CoinMarketCal (crypto, free)**
+- **AND** ALL data sources are 100% free and open
 - **AND** macro events show importance level and time
 - **AND** crypto events show affected tokens
-- **AND** clicking an event shows detail tooltip or expand
+- **AND** clicking event shows detail tooltip or expand
 - **AND** Alpha Radar can cross-reference upcoming events when scoring opportunities
+
+---
+
+### REQ-MVP-20: Sub-Agent Architecture (Workflow-as-SubAgent + pi-subagents Compatible)
+
+> **Core Principle**: All complex agents (Deep Research, Alpha Radar, Review, Evolution, Paper Trade) run as **Sub-Agents** of the main TradingPiAgent. The system follows the `pi-subagents` ecosystem conventions so that existing frontend UI components (WorkspaceStatusFloat, SubagentDetailSidebar, subagents.ts state machine) work out-of-the-box.
+
+#### 20a: Architecture Decision — Path A: Workflow-as-SubAgent
+
+**Why not a full multi-agent system?**
+- AGENTS.md explicitly states "Single Agent Architecture"
+- pi-agent-core has no native sub-agent support
+- MVP needs sub-agents for UX (progress tracking, non-blocking execution), NOT for true parallel autonomy
+
+**How it works**:
+1. Register an `"Agent"` tool in SkillRegistry (same name as pi-subagents convention)
+2. When main agent calls `Agent({ agent_type: "deep-research", prompt: "...", background: false })`, the tool:
+   - Looks up the agent type definition from `.pi/agents/*.md`
+   - Creates a SubAgentSession with its own lifecycle
+   - Executes the corresponding WorkflowEngine.run() internally
+   - Emits `subagents:*` SSE events at each lifecycle stage
+   - Returns the result (foreground) or returns ID immediately (background)
+3. Frontend's existing `subagents.ts` receives events → updates state → renders UI
+
+**Borrowed from `@yzlin/pi-subagents`** (source code reference):
+- Agent type definition format (YAML frontmatter in `.md` files)
+- Tool naming convention (`Agent`, `StopAgent`, `AgentStatus`)
+- SSE event protocol (`subagents:created/started/step/completed/failed/cancelled`)
+- Foreground vs background execution model
+- Context inheritance option (fork parent conversation into sub-agent)
+
+**NOT borrowed** (we implement ourselves):
+- Pi CLI extension loading mechanism (we load from our own directory)
+- TUI/widget rendering (our frontend already has this)
+- Git worktree isolation / tmux interactive sessions (not needed for web app)
+
+#### 20b: 5 Built-in Sub-Agent Types (.md definitions)
+
+| Agent | File | Default Mode | Tools | Icon | Trigger |
+|-------|------|-------------|-------|------|---------|
+| **Deep Research** | `deep-research.md` | Foreground | search, academic×3, reddit, polymarket, coingecko | 🔬 | User in Workspace/Research |
+| **Alpha Radar** | `alpha-radar.md` | Background | polymarket, **exa-mcp**, reddit, fred, coinmarketcal, coingecko | 📡 | Dashboard auto on mount |
+| **Review** | `review.md` | Foreground | decisions repo, journal repo, user-rules memory | 📊 | User clicks "Request Review" |
+| **Evolution** | `evolution.md` | Background | review history, rule suggestions, patterns | 🧬 | Evolution page or post-Review |
+| **Paper Trade** | `paper-trade.md` | Foreground | decision record, market price API, journal repo | 📝 | Auto on Decision confirm |
+
+Each `.md` file contains YAML frontmatter with: `name`, `display_name`, `description`, `system_prompt`, `tools[]`, `model?`, `thinking_level?`, `max_turns?`, `background_capable`, `default_mode`, `icon`, `color`.
+
+Stored in: `packages/core/src/agents/`
+
+#### 20c: Sub-Agent Lifecycle & SSE Event Protocol
+
+**6 Events** (compatible with frontend `subagents.ts`):
+1. `subagents:created` — { id, agentType, description, source: "foreground"|"background" }
+2. `subagents:started` — { id, agentType, prompt }
+3. `subagents:step` — { id, stepName, stepNumber, totalSteps, detail?, tokenUsage? } (emitted per workflow step)
+4. `subagents:completed` — { id, finalResponse, resultPreview, toolUses, durationMs, tokens }
+5. `subagents:failed` — { id, error, durationMs }
+6. `subagents:cancelled` — { id, reason }
+
+**3 Tools registered in SkillRegistry**:
+- `Agent({ agent_type, prompt, background?, workspace_id?, decision_id? })` — spawn sub-agent
+- `StopAgent({ agent_id })` — cancel running sub-agent
+- `AgentStatus({ agent_id? })` — list active or get specific status
+
+**Backend**: `SubAgentManager` class handles spawn/stop/list/status + event emission.
+
+#### 20d: Frontend Integration
+
+**Already exists** (zero new code for base):
+- `SubagentViewState` type, `applySubagentEvent()` state machine, `WorkspaceStatusFloat` float panel, `SubagentDetailSidebar` detail sidebar
+
+**Wiring added**:
+- Workspace/Research tab: inline progress bar for Deep Research steps (1-7)
+- Dashboard: mini spinner for background Alpha Radar
+- Workspace/Review tab: progress bar for Review sections (1-7)
+- Global: WorkspaceStatusFloat visible when ANY sub-agent active
+
+#### Scenario: Full Sub-Agent E2E
+- **WHEN** user triggers Deep Research in Workspace → main agent calls `Agent({ agent_type: "deep-research", ... })`
+- **THEN** `subagents:created` → float appears "🔬 Deep Research"
+- **AND** 7 × `subagents:step` events → progress bar fills (1/7 → 7/7)
+- **AND** `subagents:completed` → report renders, float shows "✓ Complete · 23s"
+- **AND** clicking float → SubagentDetailSidebar opens with full log
+- **WHEN** Dashboard loads simultaneously → Alpha Radar runs as background sub-agent
+- **AND** BOTH agents visible together in WorkspaceStatusFloat
+
+---
+
+### REQ-MVP-21: UI Detail Supplement (Page-Level Visual Specifications)
+
+> **Purpose**: This requirement supplements all page-level UI gaps identified during the Round 3 grill-me session. It provides component-level visual specifications for pages that previously had only concept-level or schema-level descriptions.
+
+#### 21a: Markets Page — List + Detail Sidebar (Enhanced from REQ-MVP-3)
+
+**Layout**: Split-pane view. Left 60% = market list. Right 40% = detail sidebar (collapsible, slides in on card click).
+
+**Left Pane — Market List**:
+```
+┌─ Markets ────────────────────────────────────────┐
+│ [🔍 Search markets...]     [★ Favorites] [⚙️]    │
+│                                                    │
+│ [Crypto Spot]  [Prediction Markets]   ← tabs      │
+│                                                    │
+│ ┌─ Card ─────┐ ┌─ Card ─────┐ ┌─ Card ─────┐     │
+│ │ ETH        │ │ BTC        │ │ SOL        │     │
+│ │ $3,421.50  │ │ $67,234    │ │ $142.30    │     │
+│ │ △+2.3%     │ │ ▽-0.8%     │ │ △+5.1%     │     │
+│ │ ~~~~~~~~   │ │ ~~~~~~~~   │ │ ~~~~~~~~   │ ← sparkline |
+│ │ Vol: $2.1B │ │ Vol: $8.9B │ │ Vol: $890M │     │
+│ │ ★          │ │            │ │ ★          │     │
+│ └────────────┘ └────────────┘ └────────────┘     │
+│ ... (responsive grid, 2-3 cols)                   │
+└────────────────────────────────────────────────────┘
+```
+
+**Card fields per tab**:
+
+| Field | Crypto Spot Tab | Prediction Markets Tab |
+|-------|----------------|----------------------|
+| Name | Coin symbol + name | Question text (truncated) |
+| Price / Odds | Current price (USD) | YES% / NO% probabilities |
+| 24h Change | % change + color | 24h odds shift |
+| Sparkline | 7d mini price chart | 7d mini odds trend |
+| Volume | 24h volume | 24h volume ($USD) |
+| Favorite | Star toggle (persisted) | Star toggle (persisted) |
+
+**Right Pane — Detail Sidebar** (slides in on card click, glassmorphism panel):
+
+```
+┌─ Market Detail ────────── [✕] ───────────┐
+│                                             │
+│  Ethereum (ETH)              [★ Favorite]  │
+│  $3,421.50  △+2.3% (24h)                  │
+│                                             │
+│  ═══ Price Chart (7d/30d/90d) ═══         │
+│  ┌──────────────────────────────────┐      │
+│  │     ╱╲    candlestick chart      │      │
+│  │   ╱  ╲  ╱╲   (lightweight-       │      │
+│  │  ╱    ╲╱  ╲   charts)            │      │
+│  │ ╱          ╲                     │      │
+│  └──────────────────────────────────┘      │
+│  Volume bar below candles                   │
+│                                             │
+│  ═══ Quick Actions ═══                      │
+│  [🔬 Research]  [📝 Decision]  [📰 News]   │
+│                                             │
+│  ═══ Paper Trade Position ═══ (P1)         │
+│  ┌─ OPEN · LONG · 1U ──────────────────┐   │
+│  │ Entry: $3,380  Now: $3,421.50       │   │
+│  │ P&L: +$41.50 (+1.2%) 🟢             │   │
+│  │ Entered: 2h ago                     │   │
+│  │ [Close Position]                    │   │
+│  └─────────────────────────────────────┘   │
+│  (hidden if no active position)             │
+│                                             │
+│  ═══ Order Book (P1) ═══                   │
+│  BID           ASK                         │
+│  3,421.00  12.5  │  3,421.50  8.3         │
+│  3,420.50  24.1  │  3,422.00  15.7        │
+│  3,420.00  18.9  │  3,422.50  6.2         │
+│  (read-only depth display)                 │
+│                                             │
+│  ═══ Key Metrics ═══                       │
+│  MCap: $412B  Rank: #2                     │
+│  7d High: $3,510  Low: $3,200             │
+│  ATH: $4,891                              │
+└─────────────────────────────────────────────┘
+```
+
+**Chart Library**: `lightweight-charts` by TradingView (open source)
+- npm: `lightweight-charts` (~300KB gzipped)
+- MVP usage: CandlestickSeries + HistogramSeries (volume) only
+- Time range selector: 7D / 30D / 90D buttons above chart
+- Crosshair enabled (shows price/date on hover)
+- Zoom/pan supported (mouse wheel + drag)
+- Theme: dark mode matching design.md (bg-card, cyan accent for up, red for down)
+
+**Quick Action Buttons**:
+- "Research" → opens Workspace with this asset pre-loaded, triggers Deep Research
+- "Create Decision" → opens DecisionForm pre-filled with this asset
+- "News" → searches **Exa MCP**/Jina for latest news about this asset
+
+**Prediction Markets variant**: Replace price chart with odds trend line. Replace order book with Polymarket order book (if CLOB data available). Add settlement countdown timer.
+
+**Dependencies**: `npm install lightweight-charts`
+
+#### 21b: Workspace/Overview — Dashboard Card Style (Enhanced from REQ-MVP-4b Tab1)
+
+**Layout**: Dashboard-style grid of info cards + activity feed.
+
+```
+┌─ Overview: World Cup 2026 ─────────────────────┐
+│                                                   │
+│ ┌─ Workspace Info ──────────────────────────┐   │
+│ │ 🏆 World Cup 2026  ·  Created Jun 10      │   │
+│ │ Prediction Markets · 5 decisions · 3 wins  │   │
+│ │ Linked: France vs Brazil (Polymarket)      │   │
+│ └───────────────────────────────────────────┘   │
+│                                                   │
+│ ┌─ Win Rate ──┐ ┌─ Total P&L ──┐ ┌─ Trades ───┐ │
+│ │    60%      │ │   +$12.40   │ │     5      │ │
+│ │  △+5% vs   │ │  🟢 profit  │ │  3W / 2L   │ │
+│ │  last week  │ │             │ │            │ │
+│ └─────────────┘ └─────────────┘ └────────────┘ │
+│                                                   │
+│ ┌─ Active Positions ─────────────────────────┐   │
+│ │ 🟢 FRA YES · +$0.32 (entered yesterday)    │   │
+│ │ 🔴 BTC SHORT · -$0.15 (entered 3d ago)    │   │
+│ └───────────────────────────────────────────┘   │
+│                                                   │
+│ ┌─ Recent Activity ──────────────────────────┐   │
+│ │ 10:30  ✅ Decision: FRA YES 1U  [B+]       │   │
+│ │ 09:15  🔬 Research completed: ETH analysis │   │
+│ │ Yesterday  📊 Review: Week 23 results       │   │
+│ │ 2d ago  💰 Settled: FRA vs BRAZ +$0.32    │   │
+│ └───────────────────────────────────────────┘   │
+│                                                   │
+│ [📝 New Decision]  [🔬 Start Research]  [📋 Request Review] │
+│                                                   │
+└───────────────────────────────────────────────────┘
+```
+
+**Components**:
+1. **Workspace Header Card**: Glassmorphism card with workspace metadata (name, description, creation date, linked markets, tag badges)
+2. **Metric Cards (×3)**: Mini stat cards using `bg-card/70` style
+   - Win Rate: number + trend arrow vs previous period
+   - Total P&L: number + color (green/red)
+   - Trade Count: W/L breakdown
+3. **Active Positions List**: Compact cards for open paper trades (direction badge, P&L, entry time). Click → expands to full position detail.
+4. **Activity Feed**: Chronological list (last 10 events), each with icon + timestamp + description. Same event types as Timeline but workspace-scoped.
+5. **Quick Actions Row**: 3 primary action buttons at bottom
+
+**Data sources**: Workspace metadata (from GET /api/workspaces/:id), Decisions summary (GET /api/decisions?workspace_id=), Paper Trades (GET /api/paper-trades?workspace_id=), recent timeline events (GET /api/timeline/events?workspace_id=&limit=10).
+
+#### 21c: Journal Global Page — Stats Bar + Timeline Cards (Enhanced from REQ-MVP-9)
+
+**Layout**: Top stats bar + filter bar + card timeline.
+
+```
+┌─ Journal ─────────────────────────────────────────┐
+│                                                     │
+│ ┌─ Summary ────────────────────────────────────┐   │
+│ │  Total: 47    Win Rate: 60%    P&L: +$12.40 │   │
+│ │  Best: FRA YES (+$2.10)  Worst: BTC (-$1.80)│   │
+│ │  Streak: W2  Avg Confidence: B+              │   │
+│ └─────────────────────────────────────────────┘   │
+│                                                     │
+│ Filter: [All Workspaces ▾] [Date Range ▾]          │
+│         [Outcome: All ▾] [Asset: All ▾]            │
+│                                    [+ Add Entry]   │
+│                                                     │
+│ ┌─ Journal Entry Card ─────────────────────────┐   │
+│ │ 14:32  Jun 13  [World Cup 2026]               │   │
+│ │                                             │   │
+│ │ LONG  FRA YES  1U                            │   │
+│ │ Entry: $0.62  Exit: $0.94  P&L: +$0.32 🟢  │   │
+│ │                                             │   │
+│ │ Reasoning: Odds undervalued, community...   │   │
+│ │ Emotion: 😤 FOMO-driven  Confidence: B+     │   │
+│ │ Reflection: Should have waited for...       │   │
+│ │                                             │   │
+│ │ [Expand Full Detail ▾]  [Linked: Decision#12│   │
+│ └─────────────────────────────────────────────┘   │
+│                                                     │
+│ ┌─ Journal Entry Card ─────────────────────────┐   │
+│ │ 09:15  Jun 12  [General]                     │   │
+│ │                                             │   │
+│ │ SHORT BTC  0.5U                             │   │
+│ │ Entry: $67,500  Status: OPEN · -0.3%        │   │
+│ │                                             │   │
+│ │ Emotion: 😐 Neutral  Confidence: B-         │   │
+│ │                                             │   │
+│ │ [Expand Full Detail ▾]  [Linked: Decision#08│   │
+│ └─────────────────────────────────────────────┘   │
+│                                                     │
+│ Export: [CSV] [Markdown]                           │
+└─────────────────────────────────────────────────────┘
+```
+
+**Card Design** (per JournalEntry):
+- **Header row**: Timestamp + Workspace badge (colored pill) + outcome dot (green win / red loss / gray open)
+- **Trade Data row**: Direction badge (LONG=green / SHORT=red) + Asset + Size + Entry/Exit prices + P&L (color-coded)
+- **Reasoning preview**: Truncated text (max 2 lines), shows decision reasoning snippet
+- **Emotion Tag**: Colored chip/badge (😤 FOMO = orange, 😐 Neutral = gray, 🤑 Greedy = yellow, 😨 Fear = blue, 😴 Bored = purple — see REQ-MVP-14 emotion taxonomy)
+- **Confidence badge**: A+/A/B+/B/C+/C/D/F with color gradient
+- **Reflection preview**: If reviewed, show 1-line reflection snippet
+- **Footer**: "Expand Full Detail" accordion link + linked Decision ID
+- **Collapsed state**: Shows header + trade data + emotion only (compact)
+- **Expanded state**: Shows all 4 dimensions (Trade Data / Reasoning / Emotion / Reflection) in structured sections
+
+**Stats Bar Components** (top):
+- 5 inline stat pills: Total Entries | Win Rate | Total P&L | Best Trade | Worst Trade
+- Each stat is a mini `bg-card/70` rounded pill with number + label
+- Win rate and P&L use color coding (green positive, red negative)
+
+**Filter Bar**:
+- Workspace dropdown (multi-select)
+- Date range picker (preset: today/week/month/all + custom)
+- Outcome filter: All / Wins / Losses / Open
+- Asset search (freetext)
+- "+ Add Entry" button for manual journaling
+
+**Export**: CSV and Markdown download buttons (reuse existing ExportMenu pattern)
+
+#### 21d: Evolution Page — recharts Visualizations (Enhanced from REQ-MVP-17)
+
+**Chart Library**: `recharts` (React declarative charts, ~50KB)
+
+**Section 1 — Progress Dashboard**:
+```
+┌─ Progress Dashboard ─────────────────────────────┐
+│                                                    │
+│ ┌─ Win Rate Trend ────────────┐ ┌─ P&L Curve ──┐ │
+│ │  ╱~~╲  recharts LineChart    │ │  ╱╲  AreaChart│ │
+│ │ ╱    ╲  (win_rate over time) │ │╱  ╲  (cumul.)│ │
+│ │╱      ╲                     │ │    ╲  (P&L)   │ │
+│ └──────────────────────────────┘ └──────────────┘ │
+│                                                    │
+│ ┌─ Trade Frequency ─────────────┐ ┌─ Quick Stats ─┐│
+│ │ █ █ █   recharts BarChart     │ │ Streak: W2   ││
+│ │ █   █ █  (trades per week)    │ │ Best WS: WC  ││
+│ │     █ █                      │ │ Conf avg: B+ ││
+│ └───────────────────────────────┘ └──────────────┘│
+│                                                    │
+└────────────────────────────────────────────────────┘
+```
+
+- **Win Rate Trend**: `<LineChart>` with rolling 10-trade win rate, x-axis = date, y-axis = 0-100%, stroke = cyan (#06b6d4), dot on each data point
+- **P&L Curve**: `<AreaChart>` cumulative P&L over time, fill = gradient green-to-transparent when positive, red when negative
+- **Trade Frequency**: `<BarChart>` trades per week, bars colored by net result that week (green if positive week, red if negative)
+- **Quick Stats**: Static metric cards (current streak, best performing workspace, average confidence)
+
+**recharts theme integration**:
+- All charts use dark background (`bg-card/50`)
+- Grid lines: `stroke: rgba(255,255,255,0.06)`
+- Text/labels: `fill: rgba(255,255,255,0.6)` (Geist Sans)
+- Tooltip: glassmorphism style matching design.md
+- Responsive: container width 100%, aspect ratio preserved
+
+**Dependencies**: `npm install recharts`
+
+**Section 2-5** (Improvement Feed / Pattern Highlights / Rule Workshop / Quick Actions): Keep existing functional spec from REQ-MVP-17, add visual notes:
+- Improvement Feed: Card list with adoption status badges (Adopted=green, Dismissed=gray, Pending=yellow)
+- Pattern Highlights: Text blocks with highlight background (`bg-cyan/10`)
+- Rule Workshop: Toggle-switch style rule cards (similar to Settings User Rules section)
+
+#### 21e: Timeline Page — Color-Coded Event Cards (Enhanced from REQ-MVP-15)
+
+**Event Type Visual Differentiation**:
+
+| Event Type | Left Border Color | Icon | Background Tint |
+|-----------|-----------------|------|---------------|
+| **ToolCall** | Cyan `border-l-cyan-500` | ⚡ | Very subtle cyan tint `bg-cyan/[0.03]` |
+| **UserAction** | Green `border-l-emerald-500` | 👤 | Subtle green tint `bg-emerald/[0.03]` |
+| **System** | Gray `border-l-gray-500` | ⚙️ | Neutral `bg-gray-[0.02]` |
+| **Milestone** | Gold `border-l-amber-400` | 🏆 | Subtle gold tint `bg-amber/[0.05]` |
+
+**Card Layout** (all types share same structure, differentiated by border/icon/color):
+
+```
+┌─ Timeline Event Card ───────────────────────────┐
+│ ⚡  Tool Call: market.coingecko.quote            │ ← icon + type label
+│    Fetching ETH price data...                    │ ← detail preview
+│                                               │
+│ 14:32:15  Jun 13  ·  230ms  ·  150 tokens    │ ← timestamp + duration + tokens
+└───────────────────────────────────────────────┘
+     ↑
+  colored left border (4px)
+```
+
+**Click to expand**: Shows full event payload in a code-style block (monospace font, syntax-highlighted JSON for tool calls, plain text for user actions).
+
+**Milestone cards are visually emphasized**: Slightly larger, gold-tinted background, subtle glow effect (`shadow-lg shadow-amber-500/10`). Milestones act as "chapter breaks" in the timeline feed.
+
+**Filter bar** (top of page): Category checkboxes (ToolCall/UserAction/System/Milestone) + Workspace dropdown + Date range + Status filter (success/error/pending).
+
+#### 21f: Workspace/Review — Accordion Report Rendering (Enhanced from REQ-MVP-13)
+
+**Report Layout**: 7-section collapsible accordion (only one expanded at a time, default=all collapsed except Overview which starts expanded).
+
+```
+┌─ Review Report: Week of Jun 7-13 ─────────────┐
+│                                                 │
+│ ▼ 1. Overview                    ✓ Complete    │ ← expanded by default
+│ ┌───────────────────────────────────────────┐  │
+│ │ Period: Jun 7-13  Trades: 5  Win: 3  Loss:2│  │
+│ │ Total P&L: +$12.40  Win Rate: 60%          │  │
+│ │ Key Finding: Best performance on prediction │  │
+│ │ markets; crypto spot needs improvement      │  │
+│ └───────────────────────────────────────────┘  │
+│                                                 │
+│ ▶ 2. Per-Trade Analysis                         │ ← collapsible
+│ ▶ 3. Error Summary                              │
+│ ▶ 4. Improvement Suggestions                    │
+│ ▶ 5. Emotion Analysis                           │
+│ ▶ 6. Rule Compliance                            │
+│ ▶ 7. Historical Comparison                      │
+│                                                 │
+│ Generated: Jun 13 14:30  ·  AI Model: gpt-4o   │
+└─────────────────────────────────────────────────┘
+```
+
+**Each Section**:
+- **Header**: Number + Title + status icon (✓ if has content, ○ if empty) + expand/collapse chevron
+- **Expanded Content**: Structured rendering based on ReviewReport schema fields
+  - *Per-Trade*: Table-like rows (one per trade) with direction/P&L/confidence/error tags
+  - *Error Summary*: Error cards with frequency count + severity badge + example context
+  - *Improvement Suggestions*: Suggestion cards with category tag + adopt/dismiss buttons
+  - *Emotion Analysis*: Emotion distribution bar (most common emotions as chips) + insight text
+  - *Rule Compliance*: Per-rule pass/fail indicators + violation examples
+  - *Historical Comparison**: Mini comparison metrics (this week vs last week vs all-time)
+- **Styling**: Each section uses `bg-card/30` with subtle inner borders, consistent with glassmorphism theme
+
+**Accordion behavior**:
+- Click header → toggle expand/collapse with framer-motion animation (height auto)
+- "Expand All" / "Collapse All" button at top-right of report header
+- Section headers always visible (sticky within report container on scroll)
+
+#### 21g: Workspace/Journal Tab — Emotion Chip Cards (Enhanced from REQ-MVP-14)
+
+**Journal Entry Card** (within a Workspace context, filtered to this workspace only):
+
+```
+┌─ Journal Entry ─────────────────────────────────┐
+│ 14:32  Jun 13                                   │
+│                                                  │
+│ ┌─ Trade Data ────────────────────────────────┐ │
+│ │ LONG  FRA YES  1U  Entry:$0.62  Exit:$0.94  │ │
+│ │ P&L: +$0.32 🟢  Duration: 4h                │ │
+│ └─────────────────────────────────────────────┘ │
+│                                                  │
+│ ┌─ Reasoning ─────────────────────────────────┐ │
+│ │ Polymarket odds showed 62% YES but my       │ │
+│ │ research suggested 70%+ probability...      │ │
+│ └─────────────────────────────────────────────┘ │
+│                                                  │
+│ ┌─ Emotion ───────────────────────────────────┐ │
+│ │ 😤 FOMO-driven  Pressure: Medium (6/10)     │ │
+│ │ Trigger: Saw odds moving fast, felt urgency  │ │
+│ └─────────────────────────────────────────────┘ │
+│                                                  │
+│ ┌─ Reflection ────────────────────────────────┐ │
+│ │ Post-settlement: The odds were indeed        │ │
+│ │ undervalued. Next time I should wait for...  │ │
+│ └─────────────────────────────────────────────┘ │
+│                                                  │
+│ Confidence: B+  Tags: [prediction-market] [fomo] │
+└──────────────────────────────────────────────────┘
+```
+
+**Emotion Tag Chips** (visual design):
+- Rounded pill shape: `rounded-full px-2 py-0.5 text-xs`
+- Color mapping (per REQ-MVP-14 emotion taxonomy):
+  - 😤 FOMO/Greed/Fear → `bg-orange-500/20 text-orange-300`
+  - 😐 Neutral/Calm → `bg-gray-500/20 text-gray-300`
+  - 🤑 Overconfident → `bg-yellow-500/20 text-yellow-300`
+  - 😨 Fear/Panic → `bg-blue-500/20 text-blue-300`
+  - 😴 Bored/Apathetic → `bg-purple-500/20 text-purple-300`
+  - 🧠 Analytical → `bg-cyan-500/20 text-cyan-300`
+- Pressure level shown as a mini progress bar (0-10) next to emotion chip
+
+**Auto-generated vs Manual indicator**:
+- Auto-generated (from decision execution): Small robot icon 🤖 badge
+- Manually added: Small pencil icon ✏️ badge
+
+**New Dependencies Summary** (from this entire REQ-MVP-21):
+| Package | Purpose | Size | Used In |
+|---------|---------|------|---------|
+| `lightweight-charts` | K-line/candlestick charts (Markets detail sidebar) | ~300KB | Markets page |
+| `recharts` | Statistical charts (Evolution dashboard) | ~50KB | Evolution page |
+
+#### Scenario: All pages have sufficient UI specifications for development
+- **WHEN** developer reads the complete spec (REQ-MVP-1 through REQ-MVP-21)
+- **THEN** every one of the 7 pages has component-level visual specifications
+- **AND** Markets page includes: list layout, detail sidebar, K-line chart (lightweight-charts), quick actions, paper trade position card, order book (P1)
+- **AND** Workspace/Overview includes: dashboard card layout (metric cards, activity feed, quick actions)
+- **AND** Journal global page includes: stats bar, filter bar, timeline card design with emotion chips, expandable 4-dimension detail
+- **AND** Evolution page includes: recharts chart specs (LineChart/AreaChart/BarCard), styling theme integration
+- **AND** Timeline page includes: 4-type color-coded event card differentiation (border color + icon + background tint)
+- **AND** Workspace/Review includes: 7-section accordion report rendering with expand/collapse behavior
+- **AND** Workspace/Journal tab includes: emotion chip card design with color mapping, pressure level bar, auto/manual indicator
+- **AND** all new components follow design.md glassmorphism dark theme conventions
+
+---
+
+### REQ-MVP-22: External Data Source Integration (Agent-Reach + Exa MCP)
+
+**Status**: DRAFT | **Priority**: P0 | **Phase**: 1
+
+**Motivation**: Trading Pi OS needs reliable external data sources for Chinese market intelligence (Xueqiu), news aggregation (RSS/Atom), crypto project research (GitHub), and AI-native web search (Exa). This requirement integrates two external toolkits as built-in data source layers and adds a unified doctor/health check system.
+
+**Source**:
+- [Agent-Reach](https://github.com/Panniantong/Agent-Reach) (MIT) — ported from Python to TypeScript, pure HTTP only
+- [Exa MCP Server](https://github.com/exa-labs/exa-mcp-server) (Apache 2.0) — official MCP server, free tier available
+
+---
+
+#### 22a: reach.xueqiu — 雪球股票数据 (Post-MVP)
+
+> **Status**: Spec complete, implementation deferred to post-MVP
+
+Pure HTTP API for A-share / US-stock / HK-stock quotes, search, community sentiment, and hot rankings via Xueqiu public API. Cookie-based auth (`xq_a_token`). Skills: `reach.xueqiu.quote`, `reach.xueqiu.search`, `reach.xueqiu.hot_posts`, `reach.xueqiu.hot_stocks`, `reach.xueqiu.health`.
+
+**File**: `packages/core/src/reach/xueqiu.ts` (already created)
+
+---
+
+#### 22b: reach.rss — RSS/Atom Feed 解析 (Post-MVP)
+
+> **Status**: Spec complete, implementation deferred to post-MVP
+
+Pure XML parsing in TypeScript for RSS/Atom news feeds. Zero npm dependencies. Skills: `reach.rss.parse`, `reach.rss.entries`, `reach.rss.health`. Cached in SQLite (TTL: 15min).
+
+---
+
+#### 22c: reach.github — GitHub REST API (Post-MVP)
+
+> **Status**: Spec complete, implementation deferred to post-MVP
+
+Direct `api.github.com` REST API calls via `fetch()`. Zero CLI dependencies. Optional `GITHUB_TOKEN` raises rate limit (60→5000 req/h). Skills: `reach.github.search_repos`, `reach.github.get_repo`, `reach.github.readme`, `reach.github.list_issues`, `reach.github.trending`, `reach.github.health`.
+
+---
+
+#### 22d: 现有数据源稳定性修复 ✅ COMPLETED
+
+**Problem**: Multiple data sources fail silently or timeout too aggressively.
+
+| Data Source | Issue | Fix |
+|-------------|-------|-----|
+| **Polymarket** | `DEFAULT_TIMEOUT_MS = 10_000` too short; DNS fails in CN | → **30_000ms** + retry with exponential backoff |
+| **CoinGecko** | Bare `fetch()` with no timeout protection | → AbortController + **15s timeout** |
+| **CoinMarketCap** | Same as CoinGecko | → Same fix |
+| **DefiLlama** | Same as CoinGecko | → Same fix |
+
+**Centralized timeouts**: `packages/core/src/config/timeouts.ts` — single source of truth for all data source timeout values.
+
+---
+
+#### 22e: reach.doctor — 聚合数据源健康检查 ✅ COMPLETED
+
+Single-entry-point health check for ALL data sources. Returns unified `DoctorReport` JSON consumable by frontend status light panel.
+
+Skill: `reach.doctor` → checks CoinGecko / DefiLlama / FRED / Reddit / CoinMarketCap / Polymarket (parallel). Returns `{ overall: "healthy"|"degraded"|"critical", sources: DataSourceStatus[] }`.
+
+**File**: `packages/core/src/reach/doctor.ts` (already created)
+
+---
+
+#### 22f: Exa MCP Integration (via mcp-hub) — NEW
+
+**Purpose**: Replace direct Exa REST API calls (`search-hub` fetch) with official [Exa MCP Server](https://mcp.exa.ai/mcp) integration through the existing `mcp-hub` package. This provides:
+- **Free mode**: No API key required for basic search (hosted at `https://mcp.exa.ai/mcp`)
+- **Enhanced mode**: With `EXA_API_KEY`, unlocks code search, contents extraction, deep research
+- **More tools**: `web_search_exa`, `web_fetch_exa`, `get_code_context_exa`, `web_search_advanced_exa`
+- **Official maintenance**: Exa Labs maintains the MCP server; we don't need to maintain search logic
+
+**Architecture Change**:
+
+```
+BEFORE (current):
+  search.query skill → SearchHub.exa() → fetch("https://api.exa.ai/search", { x-api-key })
+
+AFTER (target):
+  search.query skill → mcp-hub → Exa MCP Server (https://mcp.exa.ai/mcp)
+                                    ↓
+                          mcp.exa.web_search / mcp.exa.web_fetch /
+                          mcp.exa.get_code_context / mcp.exa.web_search_advanced
+```
+
+**MCP Server Config**:
+
+```typescript
+// In mcp-hub discovery catalog or runtime config:
+{
+  id: "exa-mcp",
+  name: "Exa Search MCP",
+  type: "remote",
+  url: "https://mcp.exa.ai/mcp",       // Hosted (free, no install)
+  // OR for self-hosted:
+  // command: "npx", args: ["-y", "exa-mcp-server"],
+  env: {
+    EXA_API_KEY: process.env.EXA_API_KEY || "",  // Optional — free mode if empty
+  },
+  tools: [
+    "web_search_exa",        // Semantic web search (default on)
+    "web_fetch_exa",         // URL → clean markdown content (default on)
+    "get_code_context_exa",  // Code-specific search (enable manually)
+    "web_search_advanced_exa", // Full filter control (enable manually)
+  ],
+}
+```
+
+**Provider Priority Update** (SearchHub):
+
+```
+1. exa-mcp      (if mcp-hub connected → best quality, AI-native)
+2. jina         (URL reading, always available)
+3. tavily       (backup search, if key configured)
+4. free         (fallback: return empty + unavailable message)
+```
+
+**Free Tier Limits** (from Exa official docs):
+| Mode | Requires Key? | Monthly Limit | Features |
+|------|--------------|---------------|----------|
+| Free (no key) | No | ~100 requests (undocumented, rate-limited) | Basic web search |
+| Free (with key) | Yes | 1,000 searches + $10 credits | All default tools |
+| Pro | Pay-as-you-go | Unlimited | $5-7/1K requests |
+
+**Migration Path**:
+1. Add Exa MCP server config to `mcp-hub` discovery catalog (replace empty shell entry)
+2. Wire `mcp-hub.callTool("exa-mcp", "web_search_exa", {...})` into SearchHub provider chain
+3. Keep direct `fetch()` fallback if MCP connection fails (graceful degradation)
+4. Update `.env.example`: mark `EXA_API_KEY= # optional — free mode works without key`
+5. Register new MCP-based skills: `mcp.exa.search`, `mcp.exa.fetch`, `mcp.exa.code_search`
+6. Remove old `search-hub/exa()` direct fetch method (or keep as fallback)
+
+**Env Vars**:
+```
+EXA_API_KEY=    # Optional. Get from https://dashboard.exa.ai/api-keys
+                # Without key: free mode (basic search, rate limited)
+                # With key: 1K req/mo + advanced features
+```
+
+---
+
+#### 22g: academic.arxiv — arXiv API (AI / Quant / Crypto Papers)
+
+**Purpose**: Search and retrieve academic papers from arXiv preprint server. Covers AI/ML (`cs.AI`, `cs.LG`), Quantitative Finance (`q-fin.*`), Cryptography (`cs.CR`), and more. **100% free, no API key required.**
+
+**API Endpoint** (single REST endpoint):
+```
+GET http://export.arxiv.org/api/query?search_query={query}&start=0&max_results=10&sortBy=submittedDate&sortOrder=descending
+```
+
+**Response Format**: Atom 1.0 XML (parse with same XML parser as RSS in 22b).
+
+**Rate Limits**: No hard limit; recommended **3s between requests**, max 30,000 results per query, paginated in slices of 2,000.
+
+**Category Map for Trading Pi OS Domains**:
+| Domain | arXiv Categories | Example Query |
+|--------|-----------------|---------------|
+| AI / ML | `cs.AI`, `cs.LG`, `cs.CL`, `stat.ML` | `cat:cs.LG AND ti:transformer` |
+| Quant Finance | `q-fin.*` (all quant-finance subcategories) | `cat:q-fin AND ti:momentum` |
+| Crypto / Blockchain | `cs.CR` (cryptography) | `cat:cs.CR AND ti:zero-knowledge` |
+| General | `*` (all categories) | `all:deep reinforcement learning trading` |
+
+**Skill Registrations**:
+```
+academic.arxiv.search     → { query, category?, maxResults?, sortBy? } → ArxivPaper[]
+academic.arxiv.detail     → { arxivId }                              → ArxivPaperDetail
+academic.arxiv.recent     → { category?, days?, maxResults? }          → ArxivPaper[]
+academic.arxiv.trending   → { category?, maxResults? }               → ArxivPaper[]  (sorted by citation proxy)
+academic.arxiv.health     → {}                                       → { status, message }
+```
+
+**TypeScript Types**:
+```typescript
+interface ArxivPaper {
+  id: string;              // e.g. "2405.12345"
+  title: string;
+  authors: string[];       // author names
+  summary: string;         // abstract text (truncated to 500 chars)
+  categories: string[];    // e.g. ["cs.LG", "cs.AI"]
+  published: string;       // ISO date
+  updated: string;
+  pdfUrl: string;         // direct PDF link
+  primaryCategory: string; // main category
+}
+
+interface ArxivPaperDetail extends ArxivPaper {
+  doi?: string;
+  comment?: string;        // author comments (journal ref, etc.)
+  journalRef?: string;
+  relatedDois?: string[];  // from Crossref lookup (optional enrichment)
+}
+```
+
+**Implementation Notes**:
+- Pure HTTP `fetch()` + XML parser (same pattern as RSS in 22b). Zero npm dependencies.
+- Use `DATA_SOURCE_TIMEOUTS.arxiv = 15_000`.
+- XML namespace-aware parsing required (`{http://www.w3.org/2005/Atom}`).
+- Cache results in SQLite cache table (namespace: `arxiv`, TTL: 30min for search, 1h for detail).
+- `trending` implementation: sort by `submittedDate descending` as proxy for trending (arXiv doesn't expose citation counts via public API). For true citation data, cross-reference with Semantic Scholar.
+
+---
+
+#### 22h: community.hackernews — Hacker News API
+
+**Purpose**: Fetch top stories, item details, and comment threads from Hacker News for tech trend detection and community sentiment analysis. **100% free, Firebase public REST API, no auth needed.**
+
+**API Endpoints** (Firebase REST, returns JSON):
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `getTopStories()` | `https://hacker-news.firebaseio.com/v0/topstories.json` | Top 500 story IDs |
+| `getItem(id)` | `https://hacker-news.firebaseio.com/v0/item/{id}.json` | Story or comment by ID |
+| `getMaxItem()` | `https://hacker-news.firebaseio.com/v0/maxitem.json` | Latest item ID (for pagination) |
+
+**Comment Tree**: Each HN item has `kids[]` (child IDs). Recursively fetch to build full comment tree. Limit depth to **3 levels** to avoid excessive requests.
+
+**Skill Registrations**:
+```
+community.hn.top           → { limit? }                    → HNStory[]
+community.hn.item           → { id }                         → HNItem (story + comments depth 3)
+community.hn.comments       → { itemId, maxDepth? }         -> HNComment[]
+community.hn.search        → { query, limit? }             → HNStory[]  (client-side filter by title/url)
+community.hn.health         → {}                            → { status, message }
+```
+
+**TypeScript Types**:
+```typescript
+interface HNStory {
+  id: number;
+  title: string;
+  url: string | null;       // external link (may be null for Ask HN)
+  by: string;              // username
+  score: number;
+  time: number;            // Unix timestamp
+  descendants: number;     // comment count
+  text?: string;           // text posts (Ask HN, Show HN)
+  kids?: number[];         // child comment IDs
+}
+
+interface HNComment extends Omit<HNStory, 'url' | 'score' | 'descendants'> {
+  parent: number;
+  level: number;           // tree depth (0 = root)
+  replies: HNComment[];    // nested children
+}
+```
+
+**Implementation Notes**:
+- Pure HTTP `fetch()` to Firebase REST API. Zero dependencies.
+- Rate limiting: HN has no official limit but be respectful — **max 1 req/sec**, batch with concurrency of 2.
+- Comment tree: recursive fetch with `AbortSignal` support, max depth default 3.
+- Cache: Top stories cached 5min (namespace: `hn`, TTL: 300_000). Items cached 10min.
+- `search` is client-side: fetch top stories → filter titles by keyword match.
+
+---
+
+#### 22i: content.medium-substack — Blog Content Layer
+
+**Purpose**: Retrieve long-form blog articles from Medium and Substack for deep research context. These platforms don't offer free REST APIs, so we use a **multi-strategy approach**:
+
+**Strategy Priority**:
+```
+1. Exa MCP web_fetch_exa   → fetch article URL directly (clean markdown output)
+2. RSS Feed parsing        → medium.com/@user/feed / substack.com/@user/feed
+3. Jina Reader fallback    → jina.ai/api/read?url=... (full page extraction)
+4. Browser AIO Sandbox     → last resort (Phase 2 only)
+```
+
+**Medium Access**:
+- Medium's public API was deprecated. Two viable paths:
+  - **RSS**: Every Medium user/feed has an RSS endpoint at `medium.com/feed/{username}`
+  - **Exa MCP**: `web_fetch_exa` can extract content from any medium.com URL
+- No API key needed for either approach
+
+**Substack Access**:
+- Every Substack newsletter has an RSS feed at `{newsletter}.substack.com/feed`
+- Substack also exposes a simple HTML structure that Jina Reader can parse
+- No API key needed
+
+**Skill Registrations**:
+```
+content.medium.fetch       → { url }                        → { title, text, author, publishedAt }
+content.medium.search      → { query, source?, limit? }     → ContentArticle[]  (via Exa MCP web_search_exa with domain filter)
+content.substack.fetch     → { url }                        → { title, text, author, publishedAt }
+content.substack.search    → { query, newsletter?, limit? } → ContentArticle[]  (via Exa MCP or RSS)
+content.rss.feed           → { feedUrl, limit? }            → RssEntry[]  (reuses reach.rss parser from 22b)
+content.rss.health         → { testUrl? }                   → { status, message }
+```
+
+**TypeScript Types**:
+```typescript
+interface ContentArticle {
+  title: string;
+  url: string;
+  author: string;
+  source: "medium" | "substack" | "rss" | "other";
+  publishedAt: string;
+  text: string;            // clean markdown/plain text (truncated to 2000 chars for storage)
+  summary: string;         // AI-generated TLDR (populated on demand)
+  tags?: string[];
+}
+```
+
+**Implementation Notes**:
+- This layer is primarily a **routing/orchestration layer** — it delegates to Exa MCP, RSS parser, or Jina Reader depending on URL/source.
+- Domain detection: `url.includes('medium.com')` → Medium path; `url.includes('substack.com')` → Substack path.
+- For search queries, use Exa MCP `web_search_exa` with `category: "blogPost"` filter.
+- Cache articles in SQLite (namespace: `content`, TTL: 1h — blog content changes infrequently).
+- **MVP scope**: Implement `fetch` (single URL) and `search` (via Exa MCP domain filter). RSS feed parsing reuses 22b's RSS parser.
+
+---
+
+#### 22j: code.github-strategies — GitHub Strategy & Code Search
+
+**Purpose**: Search GitHub repositories and code for quantitative trading strategies, crypto tools, and research implementations. Extends Agent-Reach 22c (post-MVP) with strategy-specific search patterns.
+
+**API**: GitHub REST API v3 (`api.github.com`). Same module as Agent-Reach 22c but with **strategy-focused preset queries**.
+
+**Strategy Preset Queries** (used internally, exposed as convenience methods):
+| Preset | GitHub Search Query | Use Case |
+|--------|---------------------|----------|
+| `crypto-trading` | `topic:trading-bot language:python stars:>50` | Crypto trading bots |
+| `quant-strategy` | `quantitative+trading+strategy stars:>30` | Quant finance strategies |
+| `defi-tool` | `topic:defi topic:ethereum stars:>20` | DeFi tools & protocols |
+| `onchain-analytics` | `onchain+analytics OR blockchain+dashboard` | On-chain analytics dashboards |
+| `ml-trading` | `machine+learning+trading stars:>40` | ML-based trading systems |
+
+**Skill Registrations** (extends 22c):
+```
+reach.github.search_repos    → { query, language?, sort?, limit? }              → GitHubRepo[]       (from 22c)
+reach.github.get_repo        → { owner, repo }                                   → GitHubRepoDetail    (from 22c)
+reach.github.readme          → { owner, repo }                                   → { content, sha }    (from 22c)
+reach.github.list_issues    → { owner, repo, state?, labels? }                 → GitHubIssue[]      (from 22c)
+reach.github.trending        → { since?, language? }                             → GitHubRepo[]       (from 22c)
+reach.github.health          → {}                                                → DataSourceStatus  (from 22c)
+── NEW strategy-focused skills ──
+reach.github.strategies      → { preset?, customQuery?, language?, limit? }      → GitHubRepo[]       (search with preset queries)
+reach.github.strategy_detail → { owner, repo }                                   → StrategyAnalysis    (readme + issues + recent commits + topics)
+```
+
+**TypeScript Types** (new additions):
+```typescript
+type StrategyPreset =
+  | "crypto-trading"
+  | "quant-strategy"
+  | "defi-tool"
+  | "onchain-analytics"
+  | "ml-trading";
+
+interface StrategyAnalysis extends GitHubRepoDetail {
+  readmeSummary: string;       // AI-extracted key points from README (first 500 chars)
+  recentCommits: number;       // commits in last 30 days
+  openIssues: number;
+  topics: string[];
+  license: string | null;
+  languageBreakdown?: Record<string, number>;  // % by language
+  riskScore: "low" | "medium" | "high";        // heuristic: stars/fork ratio + activity
+}
+```
+
+**Implementation Notes**:
+- Reuses the pure HTTP `api.github.com` client from 22c.
+- `strategies` skill maps preset names to optimized search queries.
+- `strategy_detail` aggregates multiple GitHub API calls into one response (repo + readme + issues + commits).
+- `riskScore` heuristic: high stars/low forks + recent activity = low risk; low stars/high forks + stale = high risk.
+- Optional `GITHUB_TOKEN` raises rate limits from 60→5000/h (recommended for heavy usage).
+
+---
+
+#### 22k: Web Research Layer — Unified Architecture Summary
+
+**Complete Data Source Matrix for REQ-MVP-22**:
+
+| # | Layer | Data Source | Skill Namespace | Auth Required | Free Tier | Status |
+|---|------|-----------|----------------|---------------|-----------|--------|
+| **🔍 Search** | Semantic Search | **Exa MCP Server** | `mcp.exa.*` | Optional (free mode works) | 1K+/mo | 22f — Designed |
+| **📚 Academic** | Preprint Papers | **arXiv API** | `academic.arxiv.*` | None (public API) | Unlimited | 🆕 22g |
+| **📚 Academic** | Citations/Papers | **Semantic Scholar** | `academic.semanticscholar.*` | Optional (throttled without key) | Shared pool | Existing |
+| **📚 Academic** | DOI Metadata | **Crossref** | `academic.crossref.*` | None (use email) | Unlimited | Existing |
+| **💬 Community** | Tech Community | **Hacker News** | `community.hn.*` | None (Firebase public) | Unlimited | 🆕 22h |
+| **💬 Community** | Social Discussions | **Reddit** | `community.reddit.*` | None (public JSON) | Throttled | Existing |
+| **📰 Content** | Long-form Blogs | **Medium/Substack** | `content.medium-*` / `content.substack-*` | Via Exa MCP or RSS | Varies | 🆕 22i |
+| **📰 Content** | URL Extraction | **Jina Reader** | `reader.jina` | JINA_API_KEY | 1M free | Existing |
+| **🛠️ Code** | Strategies/Repos | **GitHub REST** | `reach.github.*` | Optional GITHUB_TOKEN | 60/h (unauth) | 🆕 22j |
+| **📊 Market** | Prediction Markets | **Polymarket** | `market.polymarket.*` | None | Unlimited | Existing (fixed) |
+| **📊 Market** | Crypto Prices | **CoinGecko** | `market.coingecko.*` | None | Limited | Existing (fixed) |
+| **📊 Market** | Crypto Prices | **CoinMarketCap** | `market.coinmarketcap.*` | CMC_API_KEY | Free tier | Existing (fixed) |
+| **📊 Market** | TVL/DeFi | **DefiLlama** | N/A (inline) | None | Unlimited | Existing (fixed) |
+| **📅 Macro Events** | Economic Calendar | **FRED** | `events.fred` | FRED_API_KEY | Unlimited | Existing |
+| **📅 Crypto Events | Coin Calendar | **CoinMarketCal** | `events.coinmarketcal` | COINMARKETCAL_API_KEY | Free tier | Existing |
+| **🇨🇳 China Market** | A-Shares/Stocks | **Xueqiu (雪球)** | `reach.xueqiu.*` | XUEQIU_COOKIE | Post-MVP | 22a — Code done |
+| **📡 News Feeds** | RSS/Atom | **RSS Parser** | `reach.rss.*` | None | Unlimited | 22b — Post-MVP |
+
+**Doctor Expansion** (22e extended):
+
+`reach.doctor` now checks **14 sources across 6 layers**:
+
+```
+DoctorReport.overall derivation:
+  healthy   = all sources "ok" or "off" (expected-off)
+  degraded  = any "warn" or "rate_limited", zero "error"
+  critical  = at least one "error"
+
+Layer checks added:
+  🔍 exa-mcp      → HEAD/OPTIONS to mcp.exa.ai/mcp (MCP connectivity)
+  📚 arxiv        → GET export.arxiv.org/api/query?search_query=test&max_results=1
+  💬 hackernews   → GET hacker-news.firebaseio.com/v0/maxitem.json
+  📰 rss-feeds    → GET configurable test feed URL (if set)
+  🛠️ github       → GET api.github.com/rate_limit (or zen if unauthenticated)
+```
 
 ---
 
@@ -1337,8 +2236,8 @@ coinmarketcal.today()                          // Events happening today
 **Migration**: Remove any existing CCXT skill references. CoinGecko skill remains as sole crypto data source. Phase 2 may re-add CCXT if multi-exchange comparison is needed.
 
 ### REQ-REM-6: AIO Sandbox (Deferred to Phase 2)
-**Reason**: Listed as P0 in datasource.md ("万能适配器"), but all P0 data sources now have dedicated APIs (Exa, Jina, Reddit, Polymarket, Semantic Scholar). AIO Sandbox as fallback browser scraper is valuable but adds significant complexity (browser lifecycle management, DOM extraction, screenshot capture).
-**Migration**: Phase 2 implementation. When Exa/Jina/Reddit return insufficient results for a research query, Deep Research ReAct loop will fall back to AIO Sandbox for web scraping. For MVP, agent will note "limited sources available" when data is sparse.
+**Reason**: Listed as P0 in datasource.md ("万能适配器"), but all P0 data sources now have dedicated APIs (**Exa MCP**, Jina, Reddit, Polymarket, Semantic Scholar). AIO Sandbox as fallback browser scraper is valuable but adds significant complexity (browser lifecycle management, DOM extraction, screenshot capture).
+**Migration**: Phase 2 implementation. When **Exa MCP**/Jina/Reddit return insufficient results for a research query, Deep Research ReAct loop will fall back to AIO Sandbox for web scraping. For MVP, agent will note "limited sources available" when data is sparse.
 
 ---
 
@@ -1422,7 +2321,7 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o
 
 # === Data Sources (P0 — Required for Full MVP Experience) ===
-EXA_API_KEY=exa-xxx                      # Web search & AI-native search
+EXA_API_KEY=exa-xxx                      # Exa MCP (optional — free mode works without key; key unlocks 1K+/mo + advanced features)
 JINA_API_KEY=jina-xxx                    # Web page reading & scraping
 TAVILY_API_KEY=tavily-xxx                 # Alternative web search (backup)
 
@@ -1456,7 +2355,7 @@ REDDIT_CLIENT_ID=                        # Reddit OAuth (optional, public JSON A
 | Key | Priority | Used By | Free Tier? |
 |-----|----------|---------|------------|
 | OPENAI_API_KEY | **P0** | All AI features | No ($5 min) |
-| EXA_API_KEY | **P0** | Deep Research, Alpha Radar, News | Yes (1000 req/month) |
+| EXA_API_KEY | **P0** | Deep Research, Alpha Radar, News | Optional — free mode via Exa MCP works without key (1K req/mo). With key: 1K+ req/mo + advanced features (code search, deep research, contents extraction) |
 | JINA_API_KEY | **P0** | Deep Research (read pages), Research | Yes (1M free) |
 | TAVILY_API_KEY | **P1** | Backup search | Yes (1000 free) |
 | OPENROUTER_API_KEY | **P1** | Premium Deep Research mode | Pay-per-use |
@@ -1498,7 +2397,7 @@ REDDIT_CLIENT_ID=                        # Reddit OAuth (optional, public JSON A
 - [ ] Artifact sidebar panel opens on artifact_update event
 - [ ] Artifact detail view shows content, download works (.md export)
 - [ ] Export menu (HTML/Markdown/PDF) works for workspace research
-- [ ] Multi-source data: AI can call Exa, Jina, Reddit, Polymarket in same conversation
+- [ ] Multi-source data: AI can call **Exa MCP**, Jina, Reddit, Polymarket in same conversation
 
 ### E2E-4: Deep Research Agent (NEW in v2)
 - [ ] Workspace Overview tab shows "Start Deep Research" button
@@ -1581,7 +2480,7 @@ REDDIT_CLIENT_ID=                        # Reddit OAuth (optional, public JSON A
 - [ ] Changing Model (if available) → POST /api/config → reflected in next AI response
 - [ ] Theme toggle (dark/light) persists across reloads
 - [ ] Show Thinking toggle persists
-- [ ] API keys save correctly (Exa, Jina, Reddit, OpenAI, OpenRouter)
+- [ ] API keys save correctly (**Exa MCP**, Jina, Reddit, OpenAI, OpenRouter)
 - [ ] User Rules field saves and is accessible to agent
 - [ ] NEW: Deep Research settings persist (mode preference, max iterations)
 

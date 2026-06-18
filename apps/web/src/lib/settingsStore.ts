@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import type { ThemeMode } from "@/core/types";
+import type { ModelInfo } from "@/core/types";
+import type { SubagentStateMap } from "@/core/subagents";
 
 interface SettingsState {
   /* ── UI state ── */
@@ -18,6 +20,13 @@ interface SettingsState {
   /* ── Session ── */
   currentSessionId: string | null;
 
+  /* ── Model (shared between ChatWorkspace and RPC router) ── */
+  currentModel: ModelInfo | null;
+
+  /* ── Subagent state (single source of truth, replaces per-component state) ── */
+  subagents: SubagentStateMap;
+  selectedSubagentId: string | null;
+
   /* ── Actions ── */
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
@@ -31,6 +40,9 @@ interface SettingsState {
   setAuthEnabled: (enabled: boolean) => void;
   setAuthConfigured: (configured: boolean) => void;
   setCurrentSessionId: (id: string | null) => void;
+  setCurrentModel: (model: ModelInfo | null) => void;
+  setSubagents: (s: SubagentStateMap) => void;
+  setSelectedSubagentId: (id: string | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -49,6 +61,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   authEnabled: false,
   authConfigured: false,
   currentSessionId: null,
+
+  /* Model */
+  currentModel: null,
+
+  /* Subagents */
+  subagents: {},
+  selectedSubagentId: null,
 
   /* Actions */
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -78,4 +97,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setAuthEnabled: (enabled) => set({ authEnabled: enabled }),
   setAuthConfigured: (configured) => set({ authConfigured: configured }),
   setCurrentSessionId: (id) => set({ currentSessionId: id }),
+
+  /* Model actions */
+  setCurrentModel: (model) => set({ currentModel: model }),
+
+  /* Subagent actions */
+  setSubagents: (subagents) => set({ subagents }),
+  setSelectedSubagentId: (id) => set({ selectedSubagentId: id }),
 }));

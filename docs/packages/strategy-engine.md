@@ -1,3 +1,11 @@
+> **⚠️ DEPRECATED (v5.0 — 2026-06-14)**
+>
+> This package has been consolidated into `@trading-pi/core`. See `packages/core/src/strategy.ts`.
+> The original package is kept as a backward-compat shim only.
+> **New code should import from `@trading-pi/core` directly.**
+>
+> See ADR-010 for details.
+
 # Strategy Engine (`packages/strategy-engine`)
 
 **Status**: Canonical — matches current code
@@ -23,3 +31,10 @@ Strategy scoring and lifecycle management. Creates, versions, and evaluates trad
 - Mock backtest bridge: Implemented
 - Production backtest engine: Pending
 - Evolution linkage: Pending
+
+## Migration
+
+| Before (v4.x) | After (v5.0+) |
+|---------------|---------------|
+| `import { Strategy } from "@trading-pi/strategy-engine"` | `import { Strategy } from "@trading-pi/core/src/strategy"` |
+| `import { scoreStrategy } from "@trading-pi/strategy-engine"` | `import { scoreStrategy } from "@trading-pi/core/src/strategy"` |

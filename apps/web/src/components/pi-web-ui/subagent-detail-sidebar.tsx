@@ -1,11 +1,11 @@
-import { BotIcon, Clock3Icon, CopyIcon, XIcon } from "lucide-react";
+import { BotIcon, Clock3Icon, CopyIcon, SquareIcon, XIcon } from "lucide-react";
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useState } from "react";
 
 import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 
 import { copyText, formatTokens } from "../../core/format";
-import { formatDuration, subagentStatusLabel } from "../../core/subagents";
+import { formatDuration, isSubagentTerminal, subagentStatusLabel } from "../../core/subagents";
 import type { SubagentViewState } from "../../core/types";
 
 const DEFAULT_WIDTH = 420;
@@ -14,7 +14,17 @@ const MAX_WIDTH = 760;
 const MIN_CHAT_WIDTH = 480;
 const STORAGE_KEY = "pi-web-ui-subagent-sidebar-width";
 
-export function SubagentDetailSidebar({ agent, onClose }: { agent: SubagentViewState; onClose: () => void }) {
+export function SubagentDetailSidebar({
+  agent,
+  onClose,
+  onStop,
+  stopBusy,
+}: {
+  agent: SubagentViewState;
+  onClose: () => void;
+  onStop?: (agent: SubagentViewState) => void;
+  stopBusy?: boolean;
+}) {
   const [sidebarWidth, setSidebarWidth] = useState(() => getInitialWidth());
   const [isResizing, setIsResizing] = useState(false);
   const response = agent.finalResponse || agent.error || "";
@@ -104,6 +114,11 @@ export function SubagentDetailSidebar({ agent, onClose }: { agent: SubagentViewS
             <CopyIcon className="size-4" />
           </Button>
         )}
+        {onStop && !isSubagentTerminal(agent) && (
+          <Button aria-label="Stop sub-agent" disabled={stopBusy} onClick={() => onStop(agent)} size="icon-sm" title="Stop sub-agent" type="button" variant="ghost">
+            <SquareIcon className="size-4" />
+          </Button>
+        )}
         <Button onClick={onClose} size="icon-sm" type="button" variant="ghost">
           <XIcon className="size-4" />
         </Button>
@@ -150,9 +165,48 @@ export function SubagentDetailSidebar({ agent, onClose }: { agent: SubagentViewS
             </div>
           </section>
         )}
+
+        <section className="mt-4 space-y-2">
+          <div className="font-medium text-sm">Execution log</div>
+          {agent.recentEvents?.length ? (
+            <div className="space-y-2">
+              {agent.recentEvents.map((event, index) => (
+                <EventRow event={event} key={`${event.type ?? "event"}-${index}`} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border bg-muted/40 p-3 text-muted-foreground text-sm">
+              No execution events available.
+            </div>
+          )}
+        </section>
       </div>
     </aside>
   );
+}
+
+function EventRow({ event }: { event: { type?: string; payload?: unknown; timestamp?: string | number } }) {
+  const payload = event.payload && typeof event.payload === "object" ? (event.payload as Record<string, unknown>) : {};
+  const step = stringValue(payload.stepName) || stringValue(payload.detail) || stringValue(payload.resultPreview) || stringValue(payload.reason);
+  const stamp = stringValue(payload.timestamp) || stringValue(event.timestamp);
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="truncate font-medium">{event.type ?? "subagent:event"}</span>
+        {stamp && <span className="shrink-0 text-muted-foreground text-xs">{formatStamp(stamp)}</span>}
+      </div>
+      {step && <div className="mt-1 text-muted-foreground text-xs">{step}</div>}
+    </div>
+  );
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function formatStamp(value: string | number) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleTimeString();
 }
 
 function getInitialWidth(): number {

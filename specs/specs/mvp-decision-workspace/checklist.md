@@ -114,11 +114,11 @@
   - [ ] Enables closed loop: Deep Research → Decision
 
 ### Event Feed Skills (Task 1.2.6) **NEW**
-- [ ] `events.tradingeconomics` skill implemented
-  - [ ] API endpoint: TradingEconomics (macro events)
-  - [ ] Methods: calendar(upcoming?, country?), news(category?)
-  - [ ] Returns Event[] with title, date, country, importance(low/medium/high), category, forecast, previous
-  - [ ] Free developer tier handling
+- [ ] `events.fred` skill implemented
+  - [ ] API endpoint: **FRED (Federal Reserve, 100% FREE)** — macro events: FOMC/CPI/NFP/GDP
+  - [ ] Methods: calendar(), series(), search()
+  - [ ] Key series IDs: FEDFUNDS, CPIAUCSL, PCEPILFE, PAYEMS, UNRATE, GDP
+  - [ ] Free API key from https://fred.stlouisfed.org/docs/api/api_key.html
 - [ ] `events.coinmarketcal` skill implemented
   - [ ] API endpoint: CoinMarketCal (crypto events)
   - [ ] Methods: events(days?, coins?, types?), today()
@@ -165,7 +165,7 @@
 - [ ] Loading state shows shimmer skeleton cards
 - [ ] Error/stale state shows cached data with badge
 - [ ] Today's Reminders section visible
-  - [ ] Shows **real events** from TradingEconomics (macro: FOMC/CPI etc.) + CoinMarketCal (crypto: listings/unlocks)
+  - [ ] Shows **real events** from **FRED (macro: FOMC/CPI etc., FREE)** + CoinMarketCal (crypto: listings/unlocks, FREE)
   - [ ] Macro events have importance color coding (🔴 high / 🟡 medium / 🟢 low)
   - [ ] Crypto events show type icons
   - [ ] Events cached 30min, refresh on Dashboard remount
@@ -420,7 +420,7 @@
 - [ ] Card hover effect works (scale + glow per design.md)
 - [ ] Clicking primary card navigates to Workspace with topic pre-filled
 - [ ] Clicking "Research this" launches Deep Research in workspace
-- [ ] Today's Reminders section visible with **real event data** (TradingEconomics macro + CoinMarketCal crypto)
+- [ ] Today's Reminders section visible with **real event data** (**FRED macro + CoinMarketCal crypto, both FREE**)
   - [ ] Importance colors correct for macro events
   - [ ] Type icons present for crypto events
 - [ ] Recent Reviews section visible with win rate summary
@@ -485,13 +485,13 @@
 - [ ] **Report→Decision one-click**: clicking Generate Decision produces valid DecisionCard
 
 ### E2E-5: Complete Closed Loop (Task 5.5)
-- [ ] AI generates Decision Card in Research tab
-- [ ] User clicks Confirm on Decision Card
-- [ ] Decision saved and appears in Decisions tab
-- [ ] From decision, execute Paper Trade → Journal entry auto-created
-- [ ] Journal entry visible in Journal tab (workspace-scoped and global)
-- [ ] After simulated settlement, trigger Review → Review report generates
-- [ ] Review tab shows report with P&L, lessons, improvements
+- [x] AI generates Decision Card in Research tab
+- [x] User clicks Confirm on Decision Card
+- [x] Decision saved and appears in Decisions tab
+- [x] From decision, execute Paper Trade → Journal entry auto-created
+- [x] Journal entry visible in Journal tab (workspace-scoped and global)
+- [x] After simulated settlement, trigger Review → Review report generates
+- [x] Review tab shows report with P&L, lessons, improvements
 - [ ] Full loop verifiable: Dashboard(Radar) → Markets → Workspace(Research→Decision→Journal→Review)
 - [ ] Enhanced loop verifiable: Dashboard(Radar) → Workspace(Depth Research→Decision→Journal→Review)
 
@@ -536,42 +536,43 @@
 - [ ] NEW: OpenRouter API key field saves correctly
 
 ### E2E-9: Workspace Lifecycle (Task 5.9)
-- [ ] Create new workspace (name + description)
-- [ ] Workspace appears in sidebar under Workspace nav item
-- [ ] Navigate to workspace → all 5 tabs render correctly
-- [ ] Switch between workspaces → state preserved per workspace
-- [ ] Delete workspace (with confirmation dialog)
-- [ ] Workspace Overview tab shows correct summary metrics
-- [ ] Research tab has full chat capability
-- [ ] Research tab has Deep Research trigger + progress + report rendering
-- [ ] Decisions tab lists decisions for this workspace only
-- [ ] Journal tab lists entries for this workspace only
-- [ ] Review tab lists reviews for this workspace only
-- [ ] Cross-tab data consistency: decision in Decisions also in Overview
-- [ ] Deep Research sessions visible and linked to workspace
+- [x] Create new workspace (name + description)
+- [x] Workspace appears in sidebar under Workspace nav item
+- [x] Navigate to workspace → all 5 tabs render correctly
+- [x] Switch between workspaces → state preserved per workspace
+- [x] Delete workspace (with confirmation dialog)
+- [x] Workspace Overview tab shows correct summary metrics
+- [x] Research tab has full chat capability
+- [x] Research tab has Deep Research trigger + progress + report rendering
+- [x] Decisions tab lists decisions for this workspace only
+- [x] Journal tab lists entries for this workspace only
+- [x] Review tab lists reviews for this workspace only
+- [x] Cross-tab data consistency: decision in Decisions also in Overview
+- [x] Deep Research sessions visible and linked to workspace
 
 ### E2E-10: Final Compilation + Browser Verification (Task 5.10)
-- [ ] `npx tsc --noEmit` completes with zero TypeScript errors (apps/web)
-- [ ] `npm run build` succeeds without warnings
-- [ ] Dev server starts: `npm run dev`
-- [ ] Browser opens to http://localhost:5173/
-- [ ] Dashboard page loads without console errors
-- [ ] All 6 pages navigable via sidebar:
-  - [ ] Dashboard ✓
-  - [ ] Markets ✓
-  - [ ] Workspace ✓
-  - [ ] Journal ✓
-  - [ ] Timeline ✓
-  - [ ] Settings ✓
-- [ ] Visual inspection matches design.md specifications:
-  - [ ] Dark glassmorphism theme consistent
-  - [ ] Cyan accent color used throughout
-  - [ ] Typography correct (JetBrains Mono + Geist Sans)
-  - [ ] Spacing and padding consistent
-  - [ ] Animations smooth and not jarring
-- [ ] No runtime errors in browser console during normal usage
-- [ ] Network requests complete without 500 errors (except expected auth failures)
-- [ ] **Ultimate test**: Full flow Dashboard→Alpha Radar→Deep Research→Decision→Journal→Review completes without errors
+- [x] `npx tsc --noEmit` completes with zero TypeScript errors (apps/web)
+- [x] `npm run build` succeeds without warnings
+- [x] Dev server starts: `npm run dev`
+- [x] Browser opens to http://localhost:5173/
+- [x] Dashboard page loads without console errors
+- [x] All 7 pages navigable via sidebar:
+  - [x] Dashboard ✓
+  - [x] Markets ✓
+  - [x] Workspace ✓
+  - [x] Journal ✓
+  - [x] Timeline ✓
+  - [x] Settings ✓
+  - [x] Evolution ✓
+- [x] Visual inspection matches design.md specifications:
+  - [x] Dark glassmorphism theme consistent
+  - [x] Cyan accent color used throughout
+  - [x] Typography correct (JetBrains Mono + Geist Sans)
+  - [x] Spacing and padding consistent
+  - [x] Animations smooth and not jarring
+- [x] No runtime errors in browser console during normal usage
+- [x] Network requests complete without 500 errors (except expected auth failures)
+- [x] **Ultimate test**: Full flow Dashboard→Alpha Radar→Deep Research→Decision→Journal→Review completes without errors
 
 ### E2E-11: Data Flow Integrity (Bonus Verification)
 - [ ] Polymarket data flows: API → Server → Frontend correctly
@@ -682,23 +683,179 @@
 - [ ] Review report Section 6 references these checks
 - [ ] Evolution Rule Workshop shows same rules
 
+### Sub-Agent Architecture (REQ-MVP-20) **NEW** — Task 1.10 + Task 4.9 + Task 5.18
+
+#### Backend (Task 1.10)
+- [ ] `packages/core/src/agents/` directory created with:
+  - [ ] `types.ts`: AgentDefinition, SubAgentSession, SpawnParams, SubAgentStatus interfaces defined
+  - [ ] `protocol.ts`: emitCreated(), emitStarted(), emitStep(), emitCompleted(), emitFailed(), emitCancelled() helpers
+  - [ ] `manager.ts`: SubAgentManager class with loadDefinitions(), spawn(), stop(), listActive(), getStatus() methods
+  - [ ] `index.ts`: exports all
+- [ ] 5 agent definition `.md` files created in `packages/core/src/agents/`:
+  - [ ] `deep-research.md`: foreground mode, 7-step, tools: search+academic×3+reddit+polymarket+coingecko
+  - [ ] `alpha-radar.md`: background mode, tools: polymarket+exa+reddit+fred+coinmarketcal+coingecko
+  - [ ] `review.md`: foreground mode, tools: decisions+journal+user-rules
+  - [ ] `evolution.md`: background mode, tools: review-history+rule-suggestions+patterns
+  - [ ] `paper-trade.md`: foreground mode, tools: decision+market-price+journal+timeline
+- [ ] Each `.md` has valid YAML frontmatter: name, display_name, description, system_prompt, tools[], model?, thinking_level?, max_turns?, background_capable, default_mode, icon, color
+- [ ] `SubAgentManager.loadDefinitions()` successfully parses all 5 `.md` files
+- [ ] 3 sub-agent tools registered in SkillRegistry:
+  - [ ] `Agent` tool: accepts { agent_type, prompt, background?, workspace_id?, decision_id? }
+  - [ ] `StopAgent` tool: accepts { agent_id }
+  - [ ] `AgentStatus` tool: accepts { agent_id? }
+- [ ] Existing workflows wired to SubAgentManager:
+  - [ ] `deep.research` workflow callable from Agent tool with step events per research phase
+  - [ ] `alpha.radar.scan` workflow callable with step events per source scanned
+  - [ ] `review.workspace` workflow callable with section events per report section generated
+  - [ ] `evolution.propose` workflow callable with step events per analysis phase
+  - [ ] `paper.trade.lifecycle` workflow callable with lifecycle events (execute→monitor→settle)
+- [ ] Sub-Agent API endpoints exist in server/api.ts:
+  - [ ] GET /api/sub-agents returns list of active + recent completed agents
+  - [ ] GET /api/sub-agents/:id returns single agent status with event history
+  - [ ] POST /api/sub-agents/:id/stop cancels running agent
+- [ ] SSE events emitted correctly during sub-agent lifecycle:
+  - [ ] `subagents:created` includes id, agentType, description, source ("foreground"|"background")
+  - [ ] `subagents:started` includes id, agentType, prompt
+  - [ ] `subagents:step` includes id, stepName, stepNumber, totalSteps, detail, tokenUsage
+  - [ ] `subagents:completed` includes finalResponse, resultPreview, toolUses, durationMs, tokens
+  - [ ] `subagents:failed` includes error, durationMs
+  - [ ] `subagents:cancelled` includes reason
+- [ ] Events match frontend `subagents.ts` expected format (compatible with applySubagentEvent and patchFromSubagentEvent)
+
+#### Frontend Wiring (Task 4.9)
+- [ ] Workspace/Research tab shows inline progress bar for Deep Research steps (1/7 → 7/7)
+- [ ] Dashboard shows mini spinner/badge for background Alpha Radar
+- [ ] Workspace/Review tab shows progress bar for Review sections (1/7 → 7/7)
+- [ ] WorkspaceStatusFloat visible when any sub-agent active, shows last 5 agents with status icons
+- [ ] Clicking float entry opens SubagentDetailSidebar with full execution log
+- [ ] Sidebar shows: finalResponse, toolUses count, durationMs, tokens, all steps with timestamps
+- [ ] "Stop" button on active agents calls StopAgent → subagents:cancelled event → agent stops
+- [ ] Background agent completion triggers toast notification (e.g., "Alpha Radar complete: 5 opportunities found")
+- [ ] Foreground agent result renders inline in context (report in Research tab, Top5 in Dashboard)
+- [ ] Multiple concurrent sub-agents visible together in WorkspaceStatusFloat
+
+#### E2E Verification (Task 5.18)
+- [ ] Foreground Deep Research: created→started→7×step→completed, progress bar fills, report renders
+- [ ] Background Alpha Radar: created(background)→immediate return→steps→completed, Dashboard not blocked
+- [ ] Multi-agent concurrent: DR(foreground) + AR(background) both visible, independent state, stop one doesn't affect other
+- [ ] GET /api/sub-agents returns correct list
+- [ ] POST /api/sub-agents/:id/stop cancels correctly
+- [ ] Agent tool spawns all 5 types successfully
+
+---
+
+### UI Detail Supplement (REQ-MVP-21) **NEW** — Task 3.8-3.12 + Task 4.10-4.11 + Task 5.19
+
+#### Markets Page — List + Detail Sidebar (REQ-MVP-21a) — Task 3.8 + Task 4.10
+- [ ] `lightweight-charts` installed and configured (npm package present)
+- [ ] `PriceChart.tsx` component created: CandlestickSeries + HistogramSeries(volume)
+- [ ] PriceChart dark theme matches design.md (bg-card, cyan up, red down)
+- [ ] Time range selector works (7D / 30D / 90D buttons switch data)
+- [ ] Crosshair enabled: shows price/date on hover
+- [ ] Zoom/pan supported (mouse wheel + drag)
+- [ ] `MarketDetailSidebar.tsx` created: slide-in panel from right
+- [ ] Sidebar header shows: asset name + price + 24h change + favorite star toggle
+- [ ] Quick Action row: [Research] [Decision] [News] buttons functional
+- [ ] Paper Trade Position card appears when active position exists for clicked asset (P1)
+- [ ] Order Book section shows bid/ask depth table (P1, read-only, 3 levels each side)
+- [ ] Key Metrics section: MCap, Rank, High/Low, ATH
+- [ ] Close button + slide-out animation (framer-motion)
+- [ ] MarketPage layout updated to split-pane (60% list / 40% sidebar)
+- [ ] Clicking market card opens detail sidebar with correct asset data
+- [ ] Sparkline mini charts render on market list cards (simple SVG)
+- [ ] Mobile responsive: sidebar becomes full-screen overlay
+
+#### Workspace Overview Dashboard (REQ-MVP-21b) — Task 3.9
+- [ ] `WorkspaceOverview.tsx` component created with dashboard card layout
+- [ ] Workspace Header Card: name, description, creation date, linked markets, tag badges
+- [ ] Metric Card ×1 (Win Rate): number + trend arrow vs previous period
+- [ ] Metric Card ×2 (Total P&L): number + color-coded (green/red)
+- [ ] Metric Card ×3 (Trade Count): W/L breakdown
+- [ ] Active Positions List: compact paper trade cards (direction badge, P&L, entry time)
+- [ ] Activity Feed: last 10 workspace-scoped events (icon + timestamp + description)
+- [ ] Quick Actions Row: [New Decision] [Start Research] [Request Review]
+- [ ] Data fetching wired: workspace metadata, decisions summary, paper trades, recent events
+
+#### Journal Global Page (REQ-MVP-21c) — Task 3.10
+- [ ] `JournalPage.tsx` rewritten with stats bar + filter bar + card timeline
+- [ ] Stats Bar (top): 5 inline stat pills (Total / Win Rate / P&L / Best / Worst) accurate
+- [ ] Filter Bar: Workspace dropdown, Date Range picker, Outcome filter, Asset search, [+ Add Entry]
+- [ ] Journal cards render chronologically (newest first)
+- [ ] `JournalEntryCard.tsx` component created
+- [ ] Card header: timestamp + workspace colored pill + outcome dot (green/red/gray)
+- [ ] Trade Data row: direction badge (LONG=green / SHORT=red) + asset + size + prices + P&L color-coded
+- [ ] Reasoning preview: truncated text (max 2 lines)
+- [ ] Emotion Tag Chip: rounded pill with correct color per emotion taxonomy:
+  - [ ] 😤 FOMO/Greed/Fear → orange (`bg-orange-500/20 text-orange-300`)
+  - [ ] 😐 Neutral/Calm → gray (`bg-gray-500/20 text-gray-300`)
+  - [ ] 🤑 Overconfident → yellow (`bg-yellow-500/20 text-yellow-300`)
+  - [ ] 😨 Fear/Panic → blue (`bg-blue-500/20 text-blue-300`)
+  - [ ] 😴 Bored/Apathetic → purple (`bg-purple-500/20 text-purple-300`)
+  - [ ] 🧠 Analytical → cyan (`bg-cyan-500/20 text-cyan-300`)
+- [ ] Confidence badge: A+-F with color gradient
+- [ ] Reflection preview visible if reviewed
+- [ ] Collapsed state: header + trade data + emotion only (compact)
+- [ ] Expanded state: all 4 dimensions (Trade Data / Reasoning / Emotion / Reflection)
+- [ ] Auto-generated indicator (🤖) vs Manual indicator (✏️) badges correct
+- [ ] Export CSV/Markdown buttons work (reuse ExportMenu pattern)
+
+#### Evolution Page Charts (REQ-MVP-21d) — Task 3.11
+- [ ] `recharts` installed and configured (npm package present)
+- [ ] recharts dark theme config: grid lines, text colors, tooltip glassmorphism style
+- [ ] `WinRateTrendChart.tsx`: LineChart renders rolling win rate over time, cyan stroke (#06b6d4)
+- [ ] `PnLCurveChart.tsx`: AreaChart renders cumulative P&L, green/red gradient fill
+- [ ] `TradeFrequencyChart.tsx`: BarChart renders trades per week, green/red by net result
+- [ ] Quick Stats metric cards: streak, best workspace, avg confidence
+- [ ] Improvement Feed: adoption status badges (Adopted=green, Dismissed=gray, Pending=yellow)
+- [ ] Pattern Highlights: text blocks with cyan highlight background (`bg-cyan/10`)
+- [ ] Rule Workshop: toggle-switch style rule cards
+
+#### Timeline Event Cards (REQ-MVP-21e) — Task 3.12.1
+- [ ] `TimelineEventCard.tsx` created with type visual differentiation
+- [ ] ToolCall card: cyan left border (`border-l-cyan-500`) + ⚡ icon + cyan bg tint (`bg-cyan/[0.03]`)
+- [ ] UserAction card: green left border (`border-l-emerald-500`) + 👤 icon + green bg tint (`bg-emerald/[0.03]`)
+- [ ] System card: gray left border (`border-l-gray-500`) + ⚙️ icon + neutral bg tint (`bg-gray-[0.02]`)
+- [ ] Milestone card: gold left border (`border-l-amber-400`) + 🏆 icon + gold bg tint (`bg-amber/[0.05]`) + glow effect + slightly larger
+- [ ] All types share same internal structure: icon + label + detail preview + timestamp + duration + tokens
+- [ ] Click to expand: full payload display (JSON for tool calls, text for user actions)
+- [ ] Filter bar: category checkboxes work correctly for all 4 types
+
+#### Review Accordion (REQ-MVP-21f) — Task 3.12.2
+- [ ] `ReviewAccordion.tsx` created with 7-section collapsible accordion
+- [ ] Section headers: number + title + status icon (✓/○) + chevron
+- [ ] Default state: Overview expanded, others collapsed
+- [ ] "Expand All" / "Collapse All" buttons work
+- [ ] framer-motion height animation on toggle (smooth transition)
+- [ ] Only one section expanded at a time (accordion behavior)
+- [ ] Per-Trade section: table-like rows with direction/P&L/confidence/error tags
+- [ ] Error Summary section: error cards with frequency count + severity badge
+- [ ] Improvement Suggestions: suggestion cards with category tag + adopt/dismiss buttons
+- [ ] Emotion Analysis: emotion distribution chips + insight text
+- [ ] Rule Compliance: per-rule pass/fail indicators
+- [ ] Historical Comparison: mini comparison metrics (this week vs last week vs all-time)
+
+#### Workspace Journal Tab Emotion Chips (REQ-MVP-21g) — Task 3.12.3
+- [ ] Emotion Tag Chips rendered in Workspace/Journal tab with correct colors
+- [ ] Pressure level mini progress bar visible (0-10 scale) next to emotion chip
+- [ ] Auto-generated (🤖) vs Manual (✏️) indicator badges visible on each entry
+
 ---
 
 ## Summary Statistics
 
-- **Total Checkpoints**: ~380+ (increased significantly due to Round 2 grill-me additions)
-- **Phase 1 (Backend)**: ~120 checkpoints (+ Paper Trade ~15, + Review/Evolution/Rules ~20)
+- **Total Checkpoints**: ~600+ (significantly increased due to Round 2 + Round 3 grill-me + Round 4 UI supplement)
+- **Phase 1 (Backend)**: ~175 checkpoints (+ Paper Trade ~15, + Review/Evolution/Rules ~20, + Sub-Agent ~25, + FRED ~5)
 - **Phase 2 (Frontend)**: ~95 checkpoints (+ Evolution Page ~15)
-- **Phase 3 (Components)**: ~45 checkpoints (unchanged)
-- **Phase 4 (Integration)**: ~45 checkpoints (+ Paper Trade wiring ~10, + Review/Evolution/Rules wiring ~12)
-- **Phase 5 (E2E Testing)**: ~150 checkpoints (+ E2E-13 through E2E-19 = 7 new test scenarios ~50)
+- **Phase 3 (Components)**: ~95 checkpoints (original ~45 + Markets Detail/Chart ~18, + Overview Dashboard ~10, + Journal Page/EntryCard ~15, + Evolution Charts ~12, + TimelineEventCard+Accordion+EmotionChips ~20)
+- **Phase 4 (Integration)**: ~85 checkpoints (+ Paper Trade wiring ~10, + Review/Evolution/Rules wiring ~12, + Sub-Agent wiring ~10, + Markets Detail wiring ~8, + UI Visual wiring ~15)
+- **Phase 5 (E2E Testing)**: ~250 checkpoints (+ E2E-13 through E2E-19 = 7 new scenarios ~50, + E2E-18 Sub-Agent ~30, + E2E-19 UI Visual ~40)
 
 ## Pass Criteria
 
 MVP is considered **COMPLETE** when:
 
 1. ✅ All Phase 1-4 checkpoints pass (implementation verified)
-2. ✅ All E2E-1 through E2E-**19** scenarios pass (browser testing verified — 19 total scenarios)
+2. ✅ All E2E-1 through E2E-**19** scenarios pass (browser testing verified — **21 total scenarios including E2E-18 Sub-Agent + E2E-19 UI Visual**)
 3. ✅ Zero TypeScript compilation errors
 4. ✅ Zero runtime console errors during normal usage
 5. ✅ Visual compliance with design.md verified
@@ -707,7 +864,12 @@ MVP is considered **COMPLETE** when:
 8. ✅ **NEW**: Paper Trade full lifecycle working (auto-execute → monitor → settle → P&L)
 9. ✅ **NEW**: Review 7-section report working (Overview/Per-Trade/Errors/Suggestions/Emotion/Rules/History)
 10. ✅ **NEW**: Journal 4-dimension records working (Trade Data + Reasoning + Emotion + Reflection)
-11. ✅ **NEW**: Timeline event logging working (Tool/User/System/Milestone events)
-12. ✅ **NEW**: Evolution page working (Progress Dashboard + Improvement Feed + Pattern Highlights + Rule Workshop)
+11. ✅ **NEW**: Timeline event logging working (Tool/User/System/Milestone events with color-coded cards)
+12. ✅ **NEW**: Evolution page working with recharts charts (Progress Dashboard + Improvement Feed + Pattern Highlights + Rule Workshop)
 13. ✅ **NEW**: User Rules decision-time integration working (compliance check on every DecisionCard)
-14. ✅ **Ultimate E2E-19 verified**: Alpha Radar → Deep Research → Decision(Rule-checked) → Paper Trade → Journal(4-dim) → Settlement → Review(7-section) → Evolution(Rule adoption) → Next Decision(improved)
+14. ✅ **NEW**: Markets detail sidebar working with K-line chart (lightweight-charts), quick actions, paper trade position card, order book (P1)
+15. ✅ **NEW**: Workspace Overview dashboard working (metric cards + activity feed + quick actions)
+16. ✅ **NEW**: Journal global page working (stats bar + filter bar + emotion chip cards + expandable 4-dimension detail)
+17. ✅ **Ultimate E2E-19 verified**: Alpha Radar → Deep Research → Decision(Rule-checked) → Paper Trade → Journal(4-dim) → Settlement → Review(7-section) → Evolution(Rule adoption) → Next Decision(improved)
+18. ✅ **NEW E2E-18 verified**: Sub-Agent architecture working — foreground Deep Research progress, background Alpha Radar non-blocking, concurrent multi-agent in WorkspaceStatusFloat, stop/cancel working, all SSE events correct
+19. ✅ **NEW E2E-19 verified**: All UI visual specs compliant — Markets detail sidebar + K-line chart, Overview dashboard, Journal page with emotion chips, Evolution recharts charts, Timeline color-coded event cards, Review accordion report

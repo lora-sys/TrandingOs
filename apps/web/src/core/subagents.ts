@@ -119,6 +119,24 @@ function patchFromSubagentEvent(event: RpcEvent): SubagentPatch | null {
         source: "event",
       };
     }
+    case "subagents:step": {
+      const id = asString(payload.id);
+      if (!id) return null;
+      const detail = asString(payload.detail);
+      const stepName = asString(payload.stepName);
+      const stepNumber = asNumber(payload.stepNumber);
+      const totalSteps = asNumber(payload.totalSteps);
+      const progress =
+        stepName && stepNumber && totalSteps ? `${stepNumber}/${totalSteps} ${stepName}` : stepName || detail;
+      return {
+        id,
+        type: asString(payload.type),
+        description: asString(payload.description),
+        status: normalizeStatus(asString(payload.status)) || "running",
+        resultPreview: progress,
+        source: "event",
+      };
+    }
     case "subagents:completed":
     case "subagents:failed": {
       const id = asString(payload.id);
@@ -135,6 +153,19 @@ function patchFromSubagentEvent(event: RpcEvent): SubagentPatch | null {
         toolUses: asNumber(payload.toolUses),
         durationMs: asNumber(payload.durationMs),
         tokens: asTokens(payload.tokens),
+        source: "background",
+      };
+    }
+    case "subagents:cancelled": {
+      const id = asString(payload.id);
+      if (!id) return null;
+      return {
+        id,
+        type: asString(payload.type),
+        description: asString(payload.description),
+        status: "stopped",
+        error: asString(payload.reason),
+        durationMs: asNumber(payload.durationMs),
         source: "background",
       };
     }

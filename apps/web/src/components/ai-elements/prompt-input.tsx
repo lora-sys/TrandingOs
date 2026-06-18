@@ -995,7 +995,7 @@ export const PromptInputButton = ({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipTrigger render={button} />
       <TooltipContent side={side}>
         {tooltipContent}
         {shortcut && <span className="ml-2 text-muted-foreground">{shortcut}</span>}
@@ -1010,11 +1010,13 @@ export const PromptInputActionMenu = (props: PromptInputActionMenuProps) => <Dro
 export type PromptInputActionMenuTriggerProps = PromptInputButtonProps;
 
 export const PromptInputActionMenuTrigger = ({ className, children, ...props }: PromptInputActionMenuTriggerProps) => (
-  <DropdownMenuTrigger asChild>
-    <PromptInputButton className={className} {...props}>
-      {children ?? <PlusIcon className="size-4" />}
-    </PromptInputButton>
-  </DropdownMenuTrigger>
+  <DropdownMenuTrigger
+    render={
+      <InputGroupButton className={cn(className)} size={Children.count(children) > 1 ? "sm" : "icon-sm"} type="button" variant="ghost" {...props}>
+        {children ?? <PlusIcon className="size-4" />}
+      </InputGroupButton>
+    }
+  />
 );
 
 export type PromptInputActionMenuContentProps = ComponentProps<typeof DropdownMenuContent>;
