@@ -14,6 +14,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 2000,
+  },
   server: {
     port: Number(process.env.TRADING_PI_WEB_PORT ?? 5173),
     proxy: { "/api": { target: "http://localhost:8787" } },

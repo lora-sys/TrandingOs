@@ -1,8 +1,10 @@
 # Trading Pi OS — Backend Architecture
 
-> **Version**: 0.1.0 | **Last Updated**: 2026-06-13 | **Branch**: `refactor/frontend`
+> **Version**: 0.2.0 | **Last Updated**: 2026-06-14 | **Branch**: `main`
 >
 > Complete reference for `apps/web/server/api.ts` + `packages/core/` — Node.js HTTP server, agent engine, SQLite persistence, and skill/workflow system.
+>
+> **Stability Note** (2026-06-14): This document is stable. The frontend refactoring described in ADR-010 only affected `apps/web/src/`. The backend server (`api.ts`) and core packages were **not changed** by that refactoring. All content below remains accurate as-is.
 
 ---
 
@@ -865,3 +867,19 @@ Full reference in [`apps/web/.env.example`](../apps/web/.env.example):
 | `AIO_SANDBOX_BASE_URL` | No | Browser sandbox | `http://localhost:8080` |
 
 Environment loading: [`packages/core/src/config/env.ts`](../packages/core/src/config/env.ts) — supports `.env` files in `apps/web/`, project root, or parent directories.
+
+---
+
+## 12. Post-Refactor Status (v5.0 Frontend Changes)
+
+The 2026-06-14 frontend refactoring (ADR-010) was **scoped exclusively to `apps/web/src/`** and did **not** modify any backend or core package code.
+
+| Component | File(s) | Changed? |
+|-----------|---------|----------|
+| Server API (`api.ts`) | `apps/web/server/api.ts` | ❌ Unchanged |
+| Agent Engine (`trading-pi-agent.ts`) | `packages/core/src/agent/trading-pi-agent.ts` | ❌ Unchanged |
+| Skills / Workflows | `packages/core/src/skills/`, `packages/core/src/workflows/` | ❌ Unchanged |
+| Database (schema + migrations) | `packages/core/src/db/database.ts` | ❌ Unchanged |
+| Frontend (UI + API client) | `apps/web/src/` | ✅ Refactored (see [FRONTEND.md](./FRONTEND.md) v5.0 & ADR-010) |
+
+**Summary**: The v5.0 refactoring replaced the frontend's component architecture, state management, and UI layer from scratch. All server-side endpoints, agent logic, skill execution, database schema, and core packages remain identical to their pre-refactor state.

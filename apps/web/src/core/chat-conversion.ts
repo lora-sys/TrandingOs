@@ -1,14 +1,41 @@
 import { MAX_IMAGE_DIM, VALID_IMAGE_MIME_TYPES } from "./constants";
-import type { ChatItem, PiMessage, PromptImage, Usage } from "./types";
+import type { ChatItem, PiMessage, PromptImage, SessionEntry, Usage } from "./types";
 
 export function syncToItems(
-  entries: Array<{ type: string; id?: string; message?: PiMessage }>,
+  entries: SessionEntry[],
   nextId: (prefix: string) => string,
 ): ChatItem[] {
   const items: ChatItem[] = [];
   const tools = new Map<string, ChatItem & { kind: "tool" }>();
 
   for (const entry of entries) {
+    if (entry.type === "tool_call" && entry.message?.toolCallId) {
+      const tool: ChatItem & { kind: "tool" } = {
+        kind: "tool",
+        id: entry.message.toolCallId,
+        name: entry.message.toolName || "tool",
+        input: entry.message.content,
+        state: "input-available",
+      };
+      tools.set(tool.id, tool);
+      items.push(tool);
+      continue;
+    }
+
+    if (entry.type === "tool_result" && entry.message?.toolCallId) {
+      const tool = tools.get(entry.message.toolCallId);
+      if (tool) {
+        if (entry.message.isError) {
+          tool.state = "output-error";
+          tool.errorText = formatToolOutput(entry.message.content);
+        } else {
+          tool.state = "output-available";
+          tool.output = formatToolOutput(entry.message.content);
+        }
+      }
+      continue;
+    }
+
     if (entry.type !== "message" || !entry.message) continue;
     const message = entry.message;
 
@@ -67,7 +94,7 @@ export function syncToItems(
     }
   }
 
-  // Also scan for custom types (artifact/plan entries)
+  // Also scan for custom types (artifact/plan/business-card entries)
   for (const entry of entries) {
     if ((entry as any).customType === "artifact" && (entry as any).artifactId) {
       const ae = entry as any;
@@ -100,9 +127,183 @@ export function syncToItems(
         });
       }
     }
+
+    if (entry.type === "workflow_result") {
+      const workflowItems = extractWorkflowItems(entry);
+      for (const workflowItem of workflowItems) {
+        if (workflowItem.kind === "plan" && !items.find((item) => item.kind === "plan" && item.planId === workflowItem.planId)) {
+          items.push(workflowItem);
+        }
+        if (workflowItem.kind === "artifact" && !items.find((item) => item.kind === "artifact" && item.artifactId === workflowItem.artifactId)) {
+          items.push(workflowItem);
+        }
+        if (workflowItem.kind === "research-report" && !items.find((item) => item.kind === "research-report" && item.id === workflowItem.id)) {
+          items.push(workflowItem);
+        }
+      }
+    }
+
+    const structuredItems = extractStructuredItems(entry);
+    for (const structured of structuredItems) {
+      if (structured.kind === "decision" && !items.find((item) => item.kind === "decision" && item.id === structured.id)) {
+        items.push(structured);
+      }
+      if (structured.kind === "alpha-signal" && !items.find((item) => item.kind === "alpha-signal" && item.id === structured.id)) {
+        items.push(structured);
+      }
+      if (structured.kind === "research-report" && !items.find((item) => item.kind === "research-report" && item.id === structured.id)) {
+        items.push(structured);
+      }
+    }
   }
 
   return items;
+}
+
+function extractWorkflowItems(entry: SessionEntry): ChatItem[] {
+  const data = entry.data as any;
+  const workflowId = String(data?.workflowId ?? "");
+  const output = data?.output;
+  if (!isRecord(output)) return [];
+
+  const items: ChatItem[] = [];
+  const timestamp = String(entry.timestamp ?? new Date().toISOString());
+
+  if (workflowId === "trade.plan") {
+    const symbol = String(output.symbol ?? output.market?.symbol ?? "Trade");
+    const planText = String(output.plan?.text ?? "");
+    const risk = output.tradeRisk ?? output.risk;
+    items.push({
+      kind: "plan",
+      id: `plan-${data.runId ?? entry.id ?? symbol}`,
+      planId: String(data.runId ?? entry.id ?? symbol),
+      title: `Trade Plan ${symbol}`,
+      description: "AI-assisted plan generated from market snapshot and risk sizing.",
+      status: "completed",
+      steps: [
+        { id: "market", title: "Market snapshot collected", status: "done" },
+        { id: "risk", title: "Risk sizing calculated", status: "done" },
+        { id: "ai", title: "AI plan generated", status: "done" },
+        { id: "artifact", title: "Plan and risk artifacts saved", status: "done" },
+      ],
+      content: planText || (risk ? JSON.stringify(risk, null, 2) : undefined),
+    });
+  }
+
+  const artifactCandidates = flattenArtifacts(output.artifacts);
+  if (isRecord(output.artifact)) artifactCandidates.push(output.artifact);
+  for (const artifact of artifactCandidates) {
+    const artifactId = String(artifact.id ?? "");
+    if (!artifactId) continue;
+    items.push({
+      kind: "artifact",
+      id: `artifact-${artifactId}`,
+      artifactId,
+      title: String(artifact.title ?? artifact.type ?? "Artifact"),
+      summary: String(artifact.summary ?? ""),
+      type: String(artifact.type ?? "artifact"),
+      createdAt: timestamp,
+    });
+  }
+
+  const report = pickBusinessPayload(output, ["report", "researchReport", "result"]);
+  if (looksLikeResearchReport(report)) {
+    items.push({ kind: "research-report", id: `research-${objectId(report, entry.id)}`, report });
+  }
+
+  return items;
+}
+
+function flattenArtifacts(value: unknown): Array<Record<string, any>> {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(isRecord);
+  if (isRecord(value)) return Object.values(value).filter(isRecord);
+  return [];
+}
+
+function extractStructuredItems(entry: SessionEntry): ChatItem[] {
+  const customType = String(entry.customType || entry.message?.customType || entry.type || "");
+  const toolName = String(entry.message?.toolName || "");
+  const candidates = [
+    entry.data,
+    entry.value,
+    entry.payload,
+    entry.details,
+    entry.message?.details,
+    parseContent(entry.message?.content),
+  ].filter(Boolean);
+  const items: ChatItem[] = [];
+
+  for (const candidate of candidates) {
+    const decision = pickBusinessPayload(candidate, ["decision", "analysis", "result"]);
+    if ((customType.includes("decision") || /decision/i.test(toolName) || looksLikeDecision(decision)) && looksLikeDecision(decision)) {
+      items.push({ kind: "decision", id: `decision-${objectId(decision, entry.id)}`, decision });
+      continue;
+    }
+
+    const signal = pickBusinessPayload(candidate, ["signal", "alphaSignal", "alpha", "result"]);
+    if ((customType.includes("alpha") || customType.includes("signal") || /alpha|radar/i.test(toolName) || looksLikeAlphaSignal(signal)) && looksLikeAlphaSignal(signal)) {
+      items.push({ kind: "alpha-signal", id: `alpha-${objectId(signal, entry.id)}`, signal });
+      continue;
+    }
+
+    const report = pickBusinessPayload(candidate, ["report", "researchReport", "result"]);
+    if ((customType.includes("research") || customType.includes("report") || /research/i.test(toolName) || looksLikeResearchReport(report)) && looksLikeResearchReport(report)) {
+      items.push({ kind: "research-report", id: `research-${objectId(report, entry.id)}`, report });
+    }
+  }
+
+  return items;
+}
+
+function pickBusinessPayload(value: unknown, keys: string[]): unknown {
+  if (!isRecord(value)) return value;
+  for (const key of keys) {
+    if (value[key]) return value[key];
+  }
+  return value;
+}
+
+function parseContent(content: PiMessage["content"]): unknown {
+  const text = extractText(content);
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function looksLikeDecision(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return Boolean(
+    value.thesis ||
+      value.ruleCompliance ||
+      value.invalidationCriteria ||
+      (value.direction && (value.confidence || value.riskLevel || value.positionSize !== undefined)),
+  );
+}
+
+function looksLikeAlphaSignal(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return Boolean(
+    (value.title || value.question) &&
+      (value.score !== undefined || value.risk !== undefined || value.riskScore !== undefined || value.category || value.source),
+  );
+}
+
+function looksLikeResearchReport(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return Boolean(value.keyFindings || value.findings || value.executionSummary || value.dataSourceSummary || (value.topic && value.conclusion));
+}
+
+function objectId(value: unknown, fallback?: string) {
+  if (isRecord(value)) return String(value.id || value.reportId || value.sessionId || value.title || value.topic || fallback || "item");
+  return fallback || "item";
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === "object" && value !== null;
 }
 
 export function extractText(content: PiMessage["content"]): string {

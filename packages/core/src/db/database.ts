@@ -106,6 +106,7 @@ export class TradingPiDatabase {
         id TEXT PRIMARY KEY,
         session_id TEXT,
         workflow_run_id TEXT,
+        workspace_id TEXT,
         type TEXT NOT NULL,
         title TEXT NOT NULL,
         summary TEXT NOT NULL,
@@ -187,6 +188,9 @@ export class TradingPiDatabase {
       CREATE TABLE IF NOT EXISTS journal_entries (
         id TEXT PRIMARY KEY,
         session_id TEXT,
+        workspace_id TEXT,
+        decision_id TEXT,
+        paper_trade_id TEXT,
         trade_id TEXT,
         plan_artifact_id TEXT,
         mood TEXT,
@@ -201,10 +205,12 @@ export class TradingPiDatabase {
       CREATE TABLE IF NOT EXISTS reviews (
         id TEXT PRIMARY KEY,
         session_id TEXT,
+        workspace_id TEXT,
         period TEXT NOT NULL,
         metrics_json TEXT NOT NULL,
         discipline_score INTEGER NOT NULL DEFAULT 0,
         summary TEXT NOT NULL,
+        report_json TEXT NOT NULL DEFAULT '{}',
         artifact_id TEXT,
         created_at TEXT NOT NULL
       );
@@ -295,10 +301,70 @@ export class TradingPiDatabase {
       CREATE TABLE IF NOT EXISTS workspaces (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        description TEXT,
         kind TEXT NOT NULL,
+        topic_type TEXT,
+        topic_ref TEXT,
+        creator_session_id TEXT,
+        is_default INTEGER NOT NULL DEFAULT 0,
         context_json TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS decisions (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT,
+        topic TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        position_size REAL NOT NULL DEFAULT 0,
+        confidence TEXT NOT NULL,
+        risk_level TEXT NOT NULL,
+        supporting_reasons_json TEXT NOT NULL,
+        against_reasons_json TEXT NOT NULL,
+        thesis TEXT NOT NULL,
+        invalidation_criteria TEXT NOT NULL,
+        rule_compliance_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'pending',
+        executed_at TEXT,
+        settled_at TEXT,
+        result_pnl REAL,
+        review_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS research_sessions (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT,
+        topic TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'builtin',
+        status TEXT NOT NULL,
+        total_iterations INTEGER NOT NULL DEFAULT 0,
+        completed_iterations INTEGER NOT NULL DEFAULT 0,
+        report_artifact_id TEXT,
+        token_usage_json TEXT NOT NULL DEFAULT '{}',
+        error_message TEXT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS paper_trades (
+        id TEXT PRIMARY KEY,
+        decision_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        asset TEXT NOT NULL,
+        entry_price REAL NOT NULL,
+        exit_price REAL,
+        position_size REAL NOT NULL,
+        pnl REAL,
+        pnl_percent REAL,
+        entry_time TEXT NOT NULL,
+        exit_time TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        settlement_reason TEXT,
+        journal_entry_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS strategies (
@@ -328,6 +394,21 @@ export class TradingPiDatabase {
         proposal_json TEXT NOT NULL,
         artifact_id TEXT,
         approval_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS evolution_suggestions (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT,
+        review_id TEXT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'proposed',
+        rule_text TEXT,
+        source_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -375,6 +456,27 @@ export class TradingPiDatabase {
         expires_at TEXT
       );
     `);
+
+    // Upgrade older local databases before creating indexes that reference new columns.
+    this.addColumnIfMissing("memory_records", "domain", "TEXT");
+    this.addColumnIfMissing("memory_records", "workspace_id", "TEXT");
+    this.addColumnIfMissing("artifacts", "workspace_id", "TEXT");
+    this.addColumnIfMissing("journal_entries", "workspace_id", "TEXT");
+    this.addColumnIfMissing("journal_entries", "decision_id", "TEXT");
+    this.addColumnIfMissing("journal_entries", "paper_trade_id", "TEXT");
+    this.addColumnIfMissing("workspaces", "description", "TEXT");
+    this.addColumnIfMissing("workspaces", "topic_type", "TEXT");
+    this.addColumnIfMissing("workspaces", "topic_ref", "TEXT");
+    this.addColumnIfMissing("workspaces", "creator_session_id", "TEXT");
+    this.addColumnIfMissing("workspaces", "is_default", "INTEGER NOT NULL DEFAULT 0");
+    this.addColumnIfMissing("decisions", "workspace_id", "TEXT");
+    this.addColumnIfMissing("decisions", "rule_compliance_json", "TEXT NOT NULL DEFAULT '{}'");
+    this.addColumnIfMissing("research_sessions", "workspace_id", "TEXT");
+    this.addColumnIfMissing("paper_trades", "workspace_id", "TEXT");
+    this.addColumnIfMissing("paper_trades", "decision_id", "TEXT");
+    this.addColumnIfMissing("reviews", "workspace_id", "TEXT");
+    this.addColumnIfMissing("reviews", "report_json", "TEXT NOT NULL DEFAULT '{}'");
+
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_market_prices_symbol ON market_prices(symbol, fetched_at DESC);
       CREATE INDEX IF NOT EXISTS idx_market_ohlcv_symbol ON market_ohlcv(symbol, timeframe, timestamp DESC);
@@ -383,6 +485,18 @@ export class TradingPiDatabase {
       CREATE INDEX IF NOT EXISTS idx_memory_domain ON memory_records(domain, workspace_id);
       CREATE INDEX IF NOT EXISTS idx_timeline_session ON timeline_events(session_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_artifacts_workspace ON artifacts(workspace_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_workspaces_updated ON workspaces(updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_decisions_workspace ON decisions(workspace_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_research_sessions_workspace ON research_sessions(workspace_id, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_research_sessions_status ON research_sessions(status, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_paper_trades_workspace ON paper_trades(workspace_id, entry_time DESC);
+      CREATE INDEX IF NOT EXISTS idx_paper_trades_decision ON paper_trades(decision_id);
+      CREATE INDEX IF NOT EXISTS idx_paper_trades_status ON paper_trades(status, entry_time DESC);
+      CREATE INDEX IF NOT EXISTS idx_reviews_workspace ON reviews(workspace_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_evolution_suggestions_status ON evolution_suggestions(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_evolution_suggestions_workspace ON evolution_suggestions(workspace_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_search_cache_query ON search_cache(query, provider, fetched_at);
     `);
     this.addColumnIfMissing("sessions", "parent_session_id", "TEXT REFERENCES sessions(id)");
@@ -399,7 +513,19 @@ export class TradingPiDatabase {
     this.addColumnIfMissing("artifacts", "content", "TEXT");
     this.addColumnIfMissing("artifacts", "preview_ready", "INTEGER NOT NULL DEFAULT 0");
     this.addColumnIfMissing("artifacts", "preview_payload_json", "TEXT");
+    this.addColumnIfMissing("artifacts", "workspace_id", "TEXT");
     this.addColumnIfMissing("mcp_servers", "manifest_json", "TEXT NOT NULL DEFAULT '{}'");
+    this.addColumnIfMissing("journal_entries", "workspace_id", "TEXT");
+    this.addColumnIfMissing("journal_entries", "decision_id", "TEXT");
+    this.addColumnIfMissing("journal_entries", "paper_trade_id", "TEXT");
+    this.addColumnIfMissing("workspaces", "description", "TEXT");
+    this.addColumnIfMissing("workspaces", "topic_type", "TEXT");
+    this.addColumnIfMissing("workspaces", "topic_ref", "TEXT");
+    this.addColumnIfMissing("workspaces", "creator_session_id", "TEXT");
+    this.addColumnIfMissing("workspaces", "is_default", "INTEGER NOT NULL DEFAULT 0");
+    this.addColumnIfMissing("decisions", "rule_compliance_json", "TEXT NOT NULL DEFAULT '{}'");
+    this.addColumnIfMissing("reviews", "workspace_id", "TEXT");
+    this.addColumnIfMissing("reviews", "report_json", "TEXT NOT NULL DEFAULT '{}'");
   }
 
   private addColumnIfMissing(table: string, column: string, definition: string) {

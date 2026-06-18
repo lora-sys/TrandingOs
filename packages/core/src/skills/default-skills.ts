@@ -1,15 +1,44 @@
 import { readFileSync } from "node:fs";
 import { complete } from "@earendil-works/pi-ai";
 import { AioSandboxBrowserLayer, type BrowserAction, type BrowserLayerActionResult } from "@trading-pi/browser-layer";
-import { normalizeJournalInput } from "@trading-pi/journal";
+import { normalizeJournalInput } from "../journal.js";
 import { checkMcpHealth, discoverMcpServers, requiresMcpApproval } from "@trading-pi/mcp-hub";
-import { buildResearchBundle, researchQueryFor } from "@trading-pi/research-hub";
+import { buildResearchBundle, researchQueryFor } from "../research/bundle.js";
 import { SearchHub } from "@trading-pi/search-hub";
-import { scoreStrategy } from "@trading-pi/strategy-engine";
+import { scoreStrategy } from "../strategy.js";
 import { Type } from "typebox";
+import { DATA_SOURCE_TIMEOUTS } from "../config/timeouts.js";
+import {
+  getCrossrefByDoi,
+  getOpenAlexWork,
+  getSemanticScholarCitations,
+  getSemanticScholarPaper,
+  getSemanticScholarReferences,
+  searchCrossref,
+  searchOpenAlex,
+  searchSemanticScholar,
+} from "../academic/search.js";
 import { createTradingPiModel } from "../ai/model.js";
+import { getDefaultSubAgentManager } from "../agents/manager.js";
+import { getRedditComments, getRedditHot, searchReddit, SUPPORTED_SUBREDDITS } from "../community/reddit.js";
+import {
+  getCoinMarketCalEvents,
+  getCoinMarketCalToday,
+  getFredCalendar,
+  getFredSeries,
+  searchFred,
+} from "../events/event-feeds.js";
 import { fetchCcxtOhlcv, fetchCcxtTicker } from "../market/ccxt.js";
 import { fetchCoinGeckoQuote } from "../market/coingecko.js";
+import { checkXueqiuHealth, getHotPosts, getHotStocks, getStockQuote, searchStock } from "../reach/xueqiu.js";
+import { runDoctor } from "../reach/doctor.js";
+import {
+  getPolymarketMarket,
+  getPolymarketMarkets,
+  getPolymarketOrderbook,
+  getPolymarketPrice,
+  searchPolymarketMarkets,
+} from "../market/polymarket.js";
 import type { SkillRegistry } from "./registry.js";
 import type { SkillContext } from "./types.js";
 import { withCacheStrategy } from "./cache-utils.js";
@@ -24,6 +53,59 @@ export function registerDefaultSkills(registry: SkillRegistry) {
   const browserLayer = (context: SkillContext) => new AioSandboxBrowserLayer({ aioSandboxBaseUrl: context.env.aioSandboxBaseUrl });
 
   registry.register({
+    id: "Agent",
+    name: "Sub-Agent",
+    description: "Spawn a workflow-backed sub-agent for Deep Research, Alpha Radar, Review, Evolution, or Paper Trade.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({
+      agent_type: Type.String(),
+      prompt: Type.String(),
+      background: Type.Optional(Type.Boolean()),
+      workspace_id: Type.Optional(Type.String()),
+      decision_id: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => getDefaultSubAgentManager().spawn(input, context as never),
+  });
+
+  registry.register({
+    id: "StopAgent",
+    name: "Stop Sub-Agent",
+    description: "Cancel a running workflow-backed sub-agent.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({
+      agent_id: Type.String(),
+      reason: Type.Optional(Type.String()),
+    }),
+    execute: async (input) => {
+      const status = getDefaultSubAgentManager().stop(input.agent_id, input.reason);
+      if (!status) throw new Error(`Sub-agent not found: ${input.agent_id}`);
+      return status;
+    },
+  });
+
+  registry.register({
+    id: "AgentStatus",
+    name: "Sub-Agent Status",
+    description: "List active/completed sub-agents or get one sub-agent status.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      agent_id: Type.Optional(Type.String()),
+    }),
+    execute: async (input) => {
+      const manager = getDefaultSubAgentManager();
+      if (input.agent_id) {
+        const status = manager.status(input.agent_id);
+        if (!status) throw new Error(`Sub-agent not found: ${input.agent_id}`);
+        return status;
+      }
+      return manager.listActive();
+    },
+  });
+
+  registry.register({
     id: "ai.respond",
     name: "AI Response",
     description: "Call the configured OpenAI-compatible model for Trading Pi reasoning.",
@@ -32,6 +114,8 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     parameters: Type.Object({
       prompt: Type.String(),
       systemPrompt: Type.Optional(Type.String()),
+      maxTokens: Type.Optional(Type.Number()),
+      timeoutMs: Type.Optional(Type.Number()),
     }),
     execute: async (input, context) => {
       if (!context.env.openaiApiKey) throw new Error("OPENAI_API_KEY is not configured");
@@ -41,7 +125,11 @@ export function registerDefaultSkills(registry: SkillRegistry) {
           systemPrompt: input.systemPrompt ?? "You are Trading Pi, a local-first personal trading OS.",
           messages: [{ role: "user", content: input.prompt, timestamp: Date.now() }],
         },
-        { apiKey: context.env.openaiApiKey },
+        {
+          apiKey: context.env.openaiApiKey,
+          maxTokens: input.maxTokens,
+          timeoutMs: input.timeoutMs,
+        },
       );
       return {
         text: response.content.filter((block) => block.type === "text").map((block) => block.text).join(""),
@@ -85,6 +173,80 @@ export function registerDefaultSkills(registry: SkillRegistry) {
           }),
         },
       );
+    },
+  });
+
+  registry.register({
+    id: "market.polymarket.markets",
+    name: "Polymarket Markets",
+    description: "List active Polymarket prediction markets from Gamma API.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      active: Type.Optional(Type.Boolean()),
+      closed: Type.Optional(Type.Boolean()),
+      category: Type.Optional(Type.String()),
+      limit: Type.Optional(Type.Number()),
+      offset: Type.Optional(Type.Number()),
+      q: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context, signal) => {
+      const cacheKey = `polymarket:markets:${JSON.stringify(input)}`;
+      const cached = context.repos.getCache(cacheKey);
+      if (cached) return { cached: true, markets: cached.value };
+      const markets = await getPolymarketMarkets(input, signal);
+      context.repos.setCache({ namespace: "polymarket", key: cacheKey, value: markets, source: "polymarket-gamma", ttlMs: 60_000 });
+      return { cached: false, markets };
+    },
+  });
+
+  registry.register({
+    id: "market.polymarket.detail",
+    name: "Polymarket Market Detail",
+    description: "Fetch one Polymarket market and its YES orderbook.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      conditionId: Type.String(),
+    }),
+    execute: async (input, _context, signal) => {
+      const market = await getPolymarketMarket(input.conditionId, signal);
+      const orderbook = await getPolymarketOrderbook(input.conditionId, signal).catch((error) => ({
+        error: error instanceof Error ? error.message : String(error),
+      }));
+      return { market, orderbook };
+    },
+  });
+
+  registry.register({
+    id: "market.polymarket.price",
+    name: "Polymarket Price",
+    description: "Fetch current YES/NO prices for a Polymarket market.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      conditionId: Type.String(),
+    }),
+    execute: async (input, _context, signal) => getPolymarketPrice(input.conditionId, signal),
+  });
+
+  registry.register({
+    id: "market.polymarket.search",
+    name: "Polymarket Search",
+    description: "Search Polymarket prediction markets by text.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      query: Type.String(),
+      limit: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, context, signal) => {
+      const cacheKey = `polymarket:search:${input.query}:${input.limit ?? 25}`;
+      const cached = context.repos.getCache(cacheKey);
+      if (cached) return { cached: true, markets: cached.value };
+      const markets = await searchPolymarketMarkets(input.query, input.limit ?? 25, signal);
+      context.repos.setCache({ namespace: "polymarket", key: cacheKey, value: markets, source: "polymarket-gamma", ttlMs: 60_000 });
+      return { cached: false, markets };
     },
   });
 
@@ -528,6 +690,253 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, context) => searchHub(context).summarize(input),
   });
 
+  registry.register({
+    id: "community.reddit",
+    name: "Reddit Community Data",
+    description: "Fetch hot posts, search results, or comments from supported public Reddit communities.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      method: Type.Union([Type.Literal("hot"), Type.Literal("search"), Type.Literal("comments")]),
+      subreddit: Type.Optional(Type.String()),
+      query: Type.Optional(Type.String()),
+      postId: Type.Optional(Type.String()),
+      sort: Type.Optional(Type.String()),
+      limit: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, _context, signal) => {
+      if (input.method === "hot") return { posts: await getRedditHot(input.subreddit ?? "CryptoCurrency", input.limit ?? 10, signal), supported: SUPPORTED_SUBREDDITS };
+      if (input.method === "search") {
+        if (!input.query) throw new Error("community.reddit search requires query");
+        return { posts: await searchReddit(input.query, input.subreddit, input.sort ?? "relevance", input.limit ?? 10, signal), supported: SUPPORTED_SUBREDDITS };
+      }
+      if (!input.postId) throw new Error("community.reddit comments requires postId or permalink");
+      return { comments: await getRedditComments(input.postId, input.limit ?? 20, signal), supported: SUPPORTED_SUBREDDITS };
+    },
+  });
+
+  registry.register({
+    id: "academic.semanticscholar",
+    name: "Semantic Scholar Academic Search",
+    description: "Search papers and inspect details, citations, or references from Semantic Scholar.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      method: Type.Union([Type.Literal("search"), Type.Literal("details"), Type.Literal("citations"), Type.Literal("references")]),
+      query: Type.Optional(Type.String()),
+      paperId: Type.Optional(Type.String()),
+      limit: Type.Optional(Type.Number()),
+      year: Type.Optional(Type.String()),
+    }),
+    execute: async (input, _context, signal) => {
+      if (input.method === "search") {
+        if (!input.query) throw new Error("academic.semanticscholar search requires query");
+        return { papers: await searchSemanticScholar(input.query, { limit: input.limit, year: input.year }, signal) };
+      }
+      if (!input.paperId) throw new Error(`academic.semanticscholar ${input.method} requires paperId`);
+      if (input.method === "details") return { paper: await getSemanticScholarPaper(input.paperId, signal) };
+      if (input.method === "citations") return { papers: await getSemanticScholarCitations(input.paperId, input.limit ?? 10, signal) };
+      return { papers: await getSemanticScholarReferences(input.paperId, input.limit ?? 10, signal) };
+    },
+  });
+
+  registry.register({
+    id: "academic.crossref",
+    name: "Crossref Academic Metadata",
+    description: "Search Crossref works or fetch metadata by DOI.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      method: Type.Union([Type.Literal("search"), Type.Literal("byDOI")]),
+      query: Type.Optional(Type.String()),
+      doi: Type.Optional(Type.String()),
+      rows: Type.Optional(Type.Number()),
+      filter: Type.Optional(Type.String()),
+    }),
+    execute: async (input, _context, signal) => {
+      if (input.method === "search") {
+        if (!input.query) throw new Error("academic.crossref search requires query");
+        return { works: await searchCrossref(input.query, { rows: input.rows, filter: input.filter }, signal) };
+      }
+      if (!input.doi) throw new Error("academic.crossref byDOI requires doi");
+      return { work: await getCrossrefByDoi(input.doi, signal) };
+    },
+  });
+
+  registry.register({
+    id: "academic.openalex",
+    name: "OpenAlex Academic Search",
+    description: "Search OpenAlex works or fetch a work by OpenAlex id.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      method: Type.Union([Type.Literal("search"), Type.Literal("work")]),
+      query: Type.Optional(Type.String()),
+      workId: Type.Optional(Type.String()),
+      perPage: Type.Optional(Type.Number()),
+      filter: Type.Optional(Type.String()),
+    }),
+    execute: async (input, _context, signal) => {
+      if (input.method === "search") {
+        if (!input.query) throw new Error("academic.openalex search requires query");
+        return { works: await searchOpenAlex(input.query, { perPage: input.perPage, filter: input.filter }, signal) };
+      }
+      if (!input.workId) throw new Error("academic.openalex work requires workId");
+      return { work: await getOpenAlexWork(input.workId, signal) };
+    },
+  });
+
+  registry.register({
+    id: "events.fred",
+    name: "FRED Macro Events",
+    description: "Fetch FRED macro release calendar, series observations, or search macroeconomic series.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      method: Type.Union([Type.Literal("calendar"), Type.Literal("series"), Type.Literal("search")]),
+      releaseDate: Type.Optional(Type.String()),
+      realtimeStart: Type.Optional(Type.String()),
+      realtimeEnd: Type.Optional(Type.String()),
+      seriesId: Type.Optional(Type.String()),
+      searchText: Type.Optional(Type.String()),
+      limit: Type.Optional(Type.Number()),
+      observationStart: Type.Optional(Type.String()),
+      observationEnd: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context, signal) => {
+      if (input.method === "calendar") {
+        const cacheKey = `events:fred:calendar:${input.releaseDate ?? ""}:${input.realtimeStart ?? ""}:${input.realtimeEnd ?? ""}:${input.limit ?? 25}`;
+        const cached = context.repos.getCache(cacheKey);
+        if (cached) return { cached: true, ...(cached.value as Record<string, unknown>) };
+        const result = await getFredCalendar(
+          context.env.fredApiKey,
+          { releaseDate: input.releaseDate, realtimeStart: input.realtimeStart, realtimeEnd: input.realtimeEnd, limit: input.limit },
+          signal,
+        );
+        context.repos.setCache({ namespace: "events", key: cacheKey, value: result, source: "fred", ttlMs: 30 * 60_000 });
+        return { cached: false, ...result };
+      }
+      if (input.method === "series") {
+        if (!input.seriesId) throw new Error("events.fred series requires seriesId");
+        return getFredSeries(
+          context.env.fredApiKey,
+          input.seriesId,
+          { limit: input.limit, observationStart: input.observationStart, observationEnd: input.observationEnd },
+          signal,
+        );
+      }
+      if (!input.searchText) throw new Error("events.fred search requires searchText");
+      return searchFred(context.env.fredApiKey, input.searchText, input.limit ?? 10, signal);
+    },
+  });
+
+  registry.register({
+    id: "events.coinmarketcal",
+    name: "CoinMarketCal Crypto Events",
+    description: "Fetch upcoming crypto-native events from CoinMarketCal.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      method: Type.Union([Type.Literal("events"), Type.Literal("today")]),
+      days: Type.Optional(Type.Number()),
+      coins: Type.Optional(Type.Array(Type.String())),
+      types: Type.Optional(Type.Array(Type.String())),
+    }),
+    execute: async (input, context, signal) => {
+      const cacheKey = `events:coinmarketcal:${input.method}:${input.days ?? ""}:${(input.coins ?? []).join(",")}:${(input.types ?? []).join(",")}`;
+      const cached = context.repos.getCache(cacheKey);
+      if (cached) return { cached: true, ...(cached.value as Record<string, unknown>) };
+      const result =
+        input.method === "today"
+          ? await getCoinMarketCalToday(context.env.coinMarketCalApiKey, signal)
+          : await getCoinMarketCalEvents(context.env.coinMarketCalApiKey, { days: input.days, coins: input.coins, types: input.types }, signal);
+      context.repos.setCache({ namespace: "events", key: cacheKey, value: result, source: "coinmarketcal", ttlMs: 30 * 60_000 });
+      return { cached: false, ...result };
+    },
+  });
+
+  // === Agent-Reach (Xueqiu / 雪球) ===
+
+  registry.register({
+    id: "reach.xueqiu.quote",
+    name: "Xueqiu Stock Quote",
+    description: "Fetch real-time stock quote from Xueqiu (雪球). Supports A-shares (SH/SZ), US stocks (AAPL), HK stocks (00700).",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      symbol: Type.String({ description: "Stock code e.g. SH600519, SZ000858, AAPL, 00700" }),
+    }),
+    execute: async (input, _context, signal) => getStockQuote(input.symbol, signal),
+  });
+
+  registry.register({
+    id: "reach.xueqiu.search",
+    name: "Xueqiu Stock Search",
+    description: "Search stocks on Xueqiu by code or Chinese name.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      query: Type.String(),
+      limit: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, _context, signal) => searchStock(input.query, input.limit ?? 10, signal),
+  });
+
+  registry.register({
+    id: "reach.xueqiu.hot_posts",
+    name: "Xueqiu Hot Posts",
+    description: "Fetch trending posts from Xueqiu community timeline.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      limit: Type.Optional(Type.Number()),
+    }),
+    execute: async (input, _context, signal) => ({ posts: await getHotPosts(input.limit ?? 20, signal) }),
+  });
+
+  registry.register({
+    id: "reach.xueqiu.hot_stocks",
+    name: "Xueqiu Hot Stocks",
+    description: "Fetch hot stock rankings from Xueqiu (popularity or following list).",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      limit: Type.Optional(Type.Number()),
+      type: Type.Optional(Type.Union([Type.Literal(10), Type.Literal(12)])),
+    }),
+    execute: async (input, _context, signal) => ({ stocks: await getHotStocks(input.limit ?? 10, input.type ?? 10, signal) }),
+  });
+
+  registry.register({
+    id: "reach.xueqiu.health",
+    name: "Xueqiu Health Check",
+    description: "Check if Xueqiu API is reachable and responding.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({}),
+    execute: async (_input, _context, signal) => checkXueqiuHealth(signal),
+  });
+
+  // === Agent-Reach Doctor (Data Source Health) ===
+
+  registry.register({
+    id: "reach.doctor",
+    name: "Data Source Health Check",
+    description: "Run aggregated health check on all data sources (Polymarket, CoinGecko, FRED, Reddit, etc.). Returns per-source status + overall system health.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      fastMode: Type.Optional(Type.Boolean({ description: "Skip slow sources like Polymarket for quick checks" })),
+    }),
+    execute: async (input, context, signal) =>
+      runDoctor({
+        fredApiKey: context.env.fredApiKey,
+        coinMarketCapApiKey: context.env.coinMarketCapApiKey,
+        fastMode: input.fastMode,
+        signal,
+      }),
+  });
+
   for (const action of ["search", "open", "extract", "screenshot", "pdf"] as const) {
     registry.register({
       id: `browser.${action}`,
@@ -729,6 +1138,135 @@ Return sections: Market Snapshot, Source Quality, Thesis, Key Risks, Watchlist L
   });
 
   registry.register({
+    id: "decision.analyze",
+    name: "Decision Analysis",
+    description: "Gather market, news, and community context and produce a structured Decision Card recommendation.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      topic: Type.String(),
+      workspaceId: Type.Optional(Type.String()),
+      direction: Type.Optional(Type.Union([Type.Literal("YES"), Type.Literal("NO"), Type.Literal("LONG"), Type.Literal("SHORT"), Type.Literal("HOLD")])),
+      positionSize: Type.Optional(Type.Number()),
+      reportContext: Type.Optional(Type.Any()),
+    }),
+    execute: async (input, context) => {
+      const [polymarket, news, reddit, memory] = await Promise.allSettled([
+        registry.get("market.polymarket.search").execute({ query: input.topic, limit: 5 }, context),
+        registry.get("search.query").execute({ query: `${input.topic} latest news analysis`, limit: 5 }, context),
+        registry.get("community.reddit").execute({ method: "search", query: input.topic, limit: 5 }, context),
+        Promise.resolve(input.workspaceId ? context.repos.workspaceContext(input.workspaceId) : null),
+      ]);
+      const observedContext = {
+        topic: input.topic,
+        reportContext: input.reportContext ?? null,
+        polymarket: settledValue(polymarket),
+        news: settledValue(news),
+        reddit: settledValue(reddit),
+        memory: settledValue(memory),
+      };
+      let aiCard: unknown;
+      if (context.env.openaiApiKey) {
+        aiCard = await registry
+          .get("ai.respond")
+          .execute(
+            {
+              prompt: decisionPrompt(input.topic, observedContext),
+              systemPrompt:
+                "You are Trading Pi Decision Engine. Return only compact JSON matching the requested schema. Never promise profits. Prefer HOLD when evidence is weak.",
+            },
+            context,
+          )
+          .catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+      }
+      const parsed = parseDecisionCard(aiCard);
+      const card = {
+        ...fallbackDecisionCard(input.topic, input.direction, input.positionSize),
+        ...parsed,
+        workspaceId: input.workspaceId,
+        topic: input.topic,
+        observedContext,
+        generatedAt: new Date().toISOString(),
+      };
+      return {
+        ...card,
+        ruleCompliance: evaluateUserRules(loadUserRules(context, input.workspaceId), card),
+      };
+    },
+  });
+
+  registry.register({
+    id: "decision.record",
+    name: "Record Decision",
+    description: "Persist a structured Decision Card into the local Decision Engine.",
+    riskLevel: "low",
+    permission: "write",
+    parameters: Type.Object({
+      workspaceId: Type.Optional(Type.String()),
+      topic: Type.String(),
+      direction: Type.Union([Type.Literal("YES"), Type.Literal("NO"), Type.Literal("LONG"), Type.Literal("SHORT"), Type.Literal("HOLD")]),
+      positionSize: Type.Number(),
+      confidence: Type.Union([
+        Type.Literal("A+"),
+        Type.Literal("A"),
+        Type.Literal("A-"),
+        Type.Literal("B+"),
+        Type.Literal("B"),
+        Type.Literal("B-"),
+        Type.Literal("C+"),
+        Type.Literal("C"),
+        Type.Literal("C-"),
+        Type.Literal("D"),
+        Type.Literal("F"),
+      ]),
+      riskLevel: Type.Union([Type.Literal("A"), Type.Literal("B"), Type.Literal("C"), Type.Literal("D")]),
+      supportingReasons: Type.Array(Type.String()),
+      againstReasons: Type.Array(Type.String()),
+      thesis: Type.String(),
+      invalidationCriteria: Type.String(),
+      ruleCompliance: Type.Optional(Type.Any()),
+      status: Type.Optional(
+        Type.Union([
+          Type.Literal("pending"),
+          Type.Literal("executed"),
+          Type.Literal("settled_win"),
+          Type.Literal("settled_loss"),
+          Type.Literal("invalidated"),
+          Type.Literal("expired"),
+        ]),
+      ),
+    }),
+    execute: async (input, context) => context.repos.createDecision(input),
+  });
+
+  registry.register({
+    id: "decision.fromReport",
+    name: "Generate Decision From Research Report",
+    description: "Use a ResearchReport artifact or JSON report as context for decision.analyze.",
+    riskLevel: "low",
+    permission: "read",
+    parameters: Type.Object({
+      topic: Type.Optional(Type.String()),
+      workspaceId: Type.Optional(Type.String()),
+      report: Type.Optional(Type.Any()),
+      artifactId: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const artifact = input.artifactId ? context.repos.getArtifact(input.artifactId) : undefined;
+      const report = input.report ?? (artifact?.payload_json ? JSON.parse(artifact.payload_json) : undefined);
+      const topic = input.topic ?? report?.topic ?? artifact?.title ?? "Research report decision";
+      return registry.get("decision.analyze").execute(
+        {
+          topic,
+          workspaceId: input.workspaceId ?? report?.workspaceId ?? artifact?.workspace_id ?? undefined,
+          reportContext: report ?? artifact,
+        },
+        context,
+      );
+    },
+  });
+
+  registry.register({
     id: "artifact.create",
     name: "Create Artifact",
     description: "Create a local markdown artifact and persist artifact metadata.",
@@ -739,6 +1277,7 @@ Return sections: Market Snapshot, Source Quality, Thesis, Key Risks, Watchlist L
       title: Type.String(),
       summary: Type.String(),
       markdown: Type.String(),
+      workspaceId: Type.Optional(Type.String()),
       contentType: Type.Optional(Type.String()),
       previewReady: Type.Optional(Type.Boolean()),
       previewPayload: Type.Optional(Type.Any()),
@@ -748,6 +1287,7 @@ Return sections: Market Snapshot, Source Quality, Thesis, Key Risks, Watchlist L
         ...input,
         sessionId: context.sessionId,
         workflowRunId: context.workflowRunId,
+        workspaceId: input.workspaceId,
         payload: input,
       }),
   });
@@ -822,6 +1362,9 @@ Return sections: Market Snapshot, Source Quality, Thesis, Key Risks, Watchlist L
     riskLevel: "low",
     permission: "write",
     parameters: Type.Object({
+      workspaceId: Type.Optional(Type.String()),
+      decisionId: Type.Optional(Type.String()),
+      paperTradeId: Type.Optional(Type.String()),
       tradeId: Type.Optional(Type.String()),
       planArtifactId: Type.Optional(Type.String()),
       mood: Type.Optional(Type.String()),
@@ -832,7 +1375,13 @@ Return sections: Market Snapshot, Source Quality, Thesis, Key Risks, Watchlist L
     }),
     execute: async (input, context) => {
       const normalized = normalizeJournalInput(input);
-      const journalId = context.repos.createJournalEntry({ ...normalized, sessionId: context.sessionId });
+      const journalId = context.repos.createJournalEntry({
+        ...normalized,
+        workspaceId: input.workspaceId,
+        decisionId: input.decisionId,
+        paperTradeId: input.paperTradeId,
+        sessionId: context.sessionId,
+      });
       const artifact = context.artifacts.create({
         type: "trade-journal",
         title: `Trade Journal ${journalId}`,
@@ -1697,38 +2246,166 @@ async function fetchCoinMarketCapQuote(apiKey: string | undefined, symbol: strin
   const base = symbol.split("/")[0]?.toUpperCase() ?? symbol.toUpperCase();
   const url = new URL("https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest");
   url.searchParams.set("symbol", base);
-  const response = await fetch(url, { headers: { "X-CMC_PRO_API_KEY": apiKey } });
-  if (!response.ok) throw new Error(`CoinMarketCap HTTP ${response.status}`);
-  const json: { data?: Record<string, { quote?: Record<string, { price: number; percent_change_24h?: number }> }> } = await response.json();
-  const quote = json.data?.[base]?.quote?.USD;
-  if (!quote) throw new Error(`CoinMarketCap did not return USD quote for ${base}`);
-  return {
-    source: "coinmarketcap",
-    symbol,
-    priceUsd: quote.price,
-    change24h: quote.percent_change_24h ?? null,
-    fetchedAt: new Date().toISOString(),
-  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DATA_SOURCE_TIMEOUTS.coinmarketcap);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { "X-CMC_PRO_API_KEY": apiKey } });
+    if (!response.ok) throw new Error(`CoinMarketCap HTTP ${response.status}`);
+    const json: { data?: Record<string, { quote?: Record<string, { price: number; percent_change_24h?: number }> }> } = await response.json();
+    const quote = json.data?.[base]?.quote?.USD;
+    if (!quote) throw new Error(`CoinMarketCap did not return USD quote for ${base}`);
+    return { source: "coinmarketcap", symbol, priceUsd: quote.price, change24h: quote.percent_change_24h ?? null, fetchedAt: new Date().toISOString() };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchDefiLlamaPrice(symbol: string) {
   const base = symbol.split("/")[0]?.toUpperCase() ?? symbol.toUpperCase();
-  const ids: Record<string, string> = {
-    BTC: "coingecko:bitcoin",
-    ETH: "coingecko:ethereum",
-    SOL: "coingecko:solana",
-    BNB: "coingecko:binancecoin",
-    XRP: "coingecko:ripple",
-    DOGE: "coingecko:dogecoin",
-  };
+  const ids: Record<string, string> = { BTC: "coingecko:bitcoin", ETH: "coingecko:ethereum", SOL: "coingecko:solana", BNB: "coingecko:binancecoin", XRP: "coingecko:ripple", DOGE: "coingecko:dogecoin" };
   const coinId = ids[base];
   if (!coinId) throw new Error(`DefiLlama price mapping is not configured for ${base}`);
-  const response = await fetch(`https://coins.llama.fi/prices/current/${encodeURIComponent(coinId)}`);
-  if (!response.ok) throw new Error(`DefiLlama HTTP ${response.status}`);
-  const json: { coins?: Record<string, { price: number; confidence?: number }> } = await response.json();
-  const price = json.coins?.[coinId];
-  if (!price) throw new Error(`DefiLlama did not return price for ${coinId}`);
-  return { source: "defillama", symbol, coinId, priceUsd: price.price, confidence: price.confidence ?? null, fetchedAt: new Date().toISOString() };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DATA_SOURCE_TIMEOUTS.defillama);
+  try {
+    const response = await fetch(`https://coins.llama.fi/prices/current/${encodeURIComponent(coinId)}`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`DefiLlama HTTP ${response.status}`);
+    const json: { coins?: Record<string, { price: number; confidence?: number }> } = await response.json();
+    const price = json.coins?.[coinId];
+    if (!price) throw new Error(`DefiLlama did not return price for ${coinId}`);
+    return { source: "defillama", symbol, coinId, priceUsd: price.price, confidence: price.confidence ?? null, fetchedAt: new Date().toISOString() };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function settledValue(result: PromiseSettledResult<unknown>) {
+  return result.status === "fulfilled" ? result.value : { error: result.reason instanceof Error ? result.reason.message : String(result.reason) };
+}
+
+function decisionPrompt(topic: string, observedContext: unknown) {
+  return `Analyze this trading or prediction-market decision topic and return JSON only.
+Topic: ${topic}
+
+Schema:
+{
+  "direction": "YES|NO|LONG|SHORT|HOLD",
+  "positionSize": number,
+  "confidence": "A+|A|A-|B+|B|B-|C+|C|C-|D|F",
+  "riskLevel": "A|B|C|D",
+  "supportingReasons": ["reason"],
+  "againstReasons": ["risk"],
+  "thesis": "one-line thesis",
+  "invalidationCriteria": "what would prove this wrong"
+}
+
+Observed context JSON:
+${JSON.stringify(observedContext).slice(0, 20_000)}`;
+}
+
+function parseDecisionCard(value: unknown) {
+  const text =
+    typeof value === "string"
+      ? value
+      : typeof (value as { text?: unknown })?.text === "string"
+        ? String((value as { text: string }).text)
+        : "";
+  if (!text) return {};
+  const jsonText = text.match(/```json\s*([\s\S]*?)```/)?.[1] ?? text.match(/\{[\s\S]*\}/)?.[0] ?? "";
+  if (!jsonText) return {};
+  try {
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+    return sanitizeDecisionCard(parsed);
+  } catch {
+    return {};
+  }
+}
+
+function sanitizeDecisionCard(input: Record<string, unknown>) {
+  const card = {
+    direction: oneOf(input.direction, ["YES", "NO", "LONG", "SHORT", "HOLD"]),
+    positionSize: numberOr(input.positionSize, undefined),
+    confidence: oneOf(input.confidence, ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D", "F"]),
+    riskLevel: oneOf(input.riskLevel, ["A", "B", "C", "D"]),
+    supportingReasons: stringArray(input.supportingReasons),
+    againstReasons: stringArray(input.againstReasons),
+    thesis: typeof input.thesis === "string" ? input.thesis : undefined,
+    invalidationCriteria: typeof input.invalidationCriteria === "string" ? input.invalidationCriteria : undefined,
+    ruleCompliance: input.ruleCompliance,
+  };
+  return Object.fromEntries(Object.entries(card).filter(([, value]) => value !== undefined));
+}
+
+function fallbackDecisionCard(topic: string, direction?: string, positionSize?: number) {
+  return {
+    direction: direction ?? "HOLD",
+    positionSize: positionSize ?? 0,
+    confidence: "C",
+    riskLevel: "C",
+    supportingReasons: ["Initial multi-source context was gathered for this topic."],
+    againstReasons: ["Evidence may be incomplete or stale; verify market depth, news timing, and settlement conditions before acting."],
+    thesis: `Wait for stronger confirmation before taking action on ${topic}.`,
+    invalidationCriteria: "New evidence contradicts the core thesis, liquidity disappears, or price moves beyond the planned risk boundary.",
+  };
+}
+
+function oneOf<T extends string>(value: unknown, allowed: T[]) {
+  return typeof value === "string" && allowed.includes(value as T) ? (value as T) : undefined;
+}
+
+function numberOr(value: unknown, fallback: number | undefined) {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((entry) => String(entry)).filter(Boolean) : undefined;
+}
+
+type UserRule = { id: string; text: string; workspaceId?: string; importance?: number };
+
+function loadUserRules(context: SkillContext, workspaceId?: string): UserRule[] {
+  const globalRules = context.memory.query({ domain: "user_rules", limit: 100 }) as Array<{
+    key: string;
+    value: string;
+    workspace_id?: string | null;
+    workspaceId?: string;
+    importance?: number;
+  }>;
+  return globalRules
+    .filter((rule) => !rule.workspace_id || rule.workspace_id === workspaceId)
+    .map((rule) => ({ id: rule.key, text: rule.value, workspaceId: rule.workspace_id ?? rule.workspaceId, importance: rule.importance }));
+}
+
+function evaluateUserRules(rules: UserRule[], card: Record<string, unknown>) {
+  const warnings: string[] = [];
+  const topic = String(card.topic ?? "").toLowerCase();
+  const direction = String(card.direction ?? "").toUpperCase();
+  const positionSize = Number(card.positionSize ?? 0);
+  for (const rule of rules) {
+    const text = rule.text.trim();
+    const lower = text.toLowerCase();
+    const maxMatch = lower.match(/(?:max|maximum|最多|仓位不超过|position size).*?(\d+(?:\.\d+)?)\s*%?/);
+    if (maxMatch) {
+      const max = Number(maxMatch[1]);
+      if (Number.isFinite(max) && positionSize > max) warnings.push(`${rule.id}: position size ${positionSize} exceeds rule max ${max}.`);
+    }
+    if (/(no trade|do not trade|hold|不要交易|不交易)/i.test(text) && direction !== "HOLD") {
+      warnings.push(`${rule.id}: rule asks for no-trade discipline but card direction is ${direction}.`);
+    }
+    const avoidMatch = lower.match(/(?:avoid|never|block|禁止|不要|避免)\s+([^.;，。]+)/);
+    if (avoidMatch && topic.includes(avoidMatch[1].trim())) {
+      warnings.push(`${rule.id}: topic appears to match avoided condition "${avoidMatch[1].trim()}".`);
+    }
+  }
+  const blocked = warnings.some((warning) => /never|block|禁止/.test(warning.toLowerCase()));
+  return {
+    totalRules: rules.length,
+    passed: Math.max(0, rules.length - warnings.length),
+    warnings,
+    blocked,
+    message: rules.length === 0 ? "No user rules configured." : warnings.length === 0 ? `All ${rules.length} rules passed.` : `${warnings.length} rule warning(s) need review.`,
+  };
 }
 
 async function createBrowserArtifact(action: string, input: { url?: string; query?: string }, result: BrowserLayerActionResult, context: SkillContext) {

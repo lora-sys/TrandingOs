@@ -2,32 +2,39 @@ import { Link, useLocation } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   LayoutDashboardIcon,
-  MessageSquareIcon,
+  BriefcaseIcon,
   TrendingUpIcon,
-  WalletIcon,
-  BrainIcon,
+  BookOpenIcon,
   ClockIcon,
   PanelLeftCloseIcon,
   HistoryIcon,
   Trash2Icon,
   PlusIcon,
+  SettingsIcon,
+  BrainCircuitIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/pi-web-ui/app-sidebar";
 import { SettingsPanel } from "@/components/pi-web-ui/settings-panel";
+import { SubagentDetailSidebar } from "@/components/pi-web-ui/subagent-detail-sidebar";
+import { WorkspaceStatusFloat } from "@/components/pi-web-ui/workspace-status-float";
 import { useSettingsStore } from "@/lib/settingsStore";
+import { useResolvedTheme } from "@/lib/useResolvedTheme";
 import { tradingPiApi } from "@/api/client";
+import type { SubagentStatus, SubagentViewState } from "@/core/types";
 
 /* ── Navigation items ── */
 export const navItems = [
-  { label: "Dashboard", icon: LayoutDashboardIcon, to: "/dashboard" as const },
-  { label: "Chat", icon: MessageSquareIcon, to: "/" as const },
-  { label: "Market", icon: TrendingUpIcon, to: "/market" as const },
-  { label: "Portfolio", icon: WalletIcon, to: "/portfolio" as const },
-  { label: "Memory", icon: BrainIcon, to: "/memory" as const },
+  { label: "Dashboard", icon: LayoutDashboardIcon, to: "/" as const },
+  { label: "Markets", icon: TrendingUpIcon, to: "/markets" as const },
+  { label: "Workspace", icon: BriefcaseIcon, to: "/workspace" as const },
+  { label: "Journal", icon: BookOpenIcon, to: "/journal" as const },
   { label: "Timeline", icon: ClockIcon, to: "/timeline" as const },
+  { label: "Settings", icon: SettingsIcon, to: "/settings" as const },
+  { label: "Evolution", icon: BrainCircuitIcon, to: "/evolution" as const },
 ] as const;
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -36,6 +43,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const settingsOpen = useSettingsStore((s) => s.settingsOpen);
   const setSidebarOpen = useSettingsStore((s) => s.setSidebarOpen);
   const closeSettings = useSettingsStore((s) => s.closeSettings);
+  const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
 
   /* Fetch sessions from backend */
   const queryClient = useQueryClient();
@@ -45,6 +53,25 @@ export function AppLayout({ children }: { children: ReactNode }) {
     refetchInterval: 15000,
   });
   const sessions = Array.isArray(sessionsData) ? sessionsData : [];
+  const { data: workspacesData } = useQuery({
+    queryKey: ["layout-workspaces"],
+    queryFn: () => tradingPiApi.workspaces().catch(() => []),
+    refetchInterval: 15000,
+  });
+  const recentWorkspaces = Array.isArray(workspacesData) ? workspacesData.slice(0, 5) : [];
+  const { data: subAgentData } = useQuery({
+    queryKey: ["sub-agents"],
+    queryFn: () => tradingPiApi.subAgents().catch(() => ({ agents: [] })),
+    refetchInterval: 2000,
+  });
+  const subagents = useMemo(() => normalizeSubagents((subAgentData as any)?.agents), [subAgentData]);
+  const selectedSubagent = selectedSubagentId ? subagents.find((agent) => agent.id === selectedSubagentId) : undefined;
+  const stopSubagent = useMutation({
+    mutationFn: (agent: SubagentViewState) => tradingPiApi.stopSubAgent(agent.id, "Stopped from WorkspaceStatusFloat"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sub-agents"] });
+    },
+  });
 
   /* Health check for connection status */
   const { data: healthData } = useQuery({
@@ -76,10 +103,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const authConfigured = useSettingsStore((s) => s.authConfigured);
 
   /* Apply theme class on body */
-  const resolvedTheme =
-    themeMode === "system"
-      ? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-      : themeMode;
+  const resolvedTheme = useResolvedTheme(themeMode);
 
   return (
     <div
@@ -88,9 +112,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
         resolvedTheme === "dark" && "dark",
       )}
       style={{ colorScheme: resolvedTheme }}
-    >
-      {/* Collapsible Sidebar (pi-web-ui component) */}
-      <AppSidebar open={sidebarOpen} onToggle={setSidebarOpen} onOpenSettings={useSettingsStore.getState().openSettings}>
+      >
+        {/* Collapsible Sidebar (pi-web-ui component) */}
+      <div className="hidden h-full shrink-0 md:block">
+        <AppSidebar open={sidebarOpen} onToggle={setSidebarOpen} onOpenSettings={useSettingsStore.getState().openSettings}>
         {/* ── Expanded content ── */}
         <div className="flex flex-col gap-0.5 border-b px-3 py-3">
           <div className="flex items-center gap-2 font-medium text-sm">
@@ -126,6 +151,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     <IconComp className="size-4 shrink-0" />
                     <span>{item.label}</span>
                   </Link>
+                  {item.to === "/workspace" && recentWorkspaces.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 pl-6">
+                      {recentWorkspaces.map((workspace: any) => (
+                        <li key={workspace.id}>
+                          <Link
+                            className="block truncate rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+                            params={{ workspaceId: workspace.id }}
+                            to="/workspace/$workspaceId"
+                          >
+                            {workspace.name}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}
@@ -137,7 +177,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <div className="border-t mt-2 p-2">
             <div className="flex items-center gap-1.5 px-2 py-1.5 text-muted-foreground text-xs font-medium">
               <HistoryIcon className="size-3.5" />
-              <span>Sessions</span>
+              <span>Session history</span>
               <button
                 onClick={() => {
                   useSettingsStore.getState().setCurrentSessionId(null);
@@ -160,14 +200,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 >
                   <Link
                     key={s.id}
-                    to="/"
+                    to="/workspace"
                     onClick={() => useSettingsStore.getState().setCurrentSessionId(s.id)}
                     className={cn(
                       "flex items-center gap-2 rounded-md px-2 py-1 text-xs truncate transition-colors group",
                       "text-muted-foreground hover:bg-white/5 hover:text-foreground",
                     )}
                   >
-                    <MessageSquareIcon className="size-3 shrink-0" />
+                    <BriefcaseIcon className="size-3 shrink-0" />
                     <span className="truncate flex-1 min-w-0">{s.name ?? s.id ?? "Untitled"}</span>
                     <button
                       className="shrink-0 size-4 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
@@ -206,7 +246,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
-      </AppSidebar>
+        </AppSidebar>
+      </div>
 
       {/* Main Content Area */}
       <motion.main
@@ -214,10 +255,51 @@ export function AppLayout({ children }: { children: ReactNode }) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-        className="min-h-0 flex-1 overflow-auto"
+        className="min-h-0 flex-1 overflow-auto pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0"
       >
         {children}
       </motion.main>
+
+      <nav
+        aria-label="Primary"
+        className="fixed inset-x-0 bottom-0 z-40 flex h-14 items-center justify-around border-t border-white/[0.08] bg-card/90 px-1 backdrop-blur-xl md:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {navItems.map((item) => {
+          const isActive =
+            item.to === "/"
+              ? location.pathname === "/"
+              : location.pathname.startsWith(item.to);
+          const IconComp = item.icon;
+          return (
+            <Link
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] transition-colors",
+                isActive ? "text-cyan-400" : "text-muted-foreground hover:text-foreground",
+              )}
+              key={item.to}
+              to={item.to}
+            >
+              <IconComp className="size-4" />
+              <span className="max-w-full truncate">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {subagents.length > 0 && !selectedSubagent && (
+        <WorkspaceStatusFloat onOpenSubagent={setSelectedSubagentId} subagents={subagents} />
+      )}
+
+      {selectedSubagent && (
+        <SubagentDetailSidebar
+          agent={selectedSubagent}
+          onClose={() => setSelectedSubagentId(null)}
+          onStop={(agent) => stopSubagent.mutate(agent)}
+          stopBusy={stopSubagent.isPending && stopSubagent.variables?.id === selectedSubagent.id}
+        />
+      )}
 
       {/* Global Settings Modal */}
       {settingsOpen && (
@@ -246,4 +328,50 @@ export function AppLayout({ children }: { children: ReactNode }) {
       )}
     </div>
   );
+}
+
+function normalizeSubagents(input: unknown): SubagentViewState[] {
+  const rows = Array.isArray(input) ? input : [];
+  return rows.map((row) => {
+    const agent = row as Record<string, any>;
+    const status = normalizeSubagentStatus(agent.status);
+    const source: SubagentViewState["source"] = agent.isBackground ? "background" : "foreground";
+    return {
+      id: String(agent.id),
+      type: agent.type ?? agent.agentType,
+      description: agent.description ?? agent.prompt,
+      status,
+      finalResponse: typeof agent.resultPreview === "string" && status === "completed" ? agent.resultPreview : undefined,
+      resultPreview: typeof agent.resultPreview === "string" ? agent.resultPreview : undefined,
+      error: typeof agent.error === "string" ? agent.error : undefined,
+      toolUses: numberValue(agent.toolUses),
+      durationMs: numberValue(agent.durationMs),
+      isBackground: Boolean(agent.isBackground),
+      source,
+      recentEvents: Array.isArray(agent.recentEvents) ? agent.recentEvents : [],
+      updatedAt: numberValue(agent.completedAt) || numberValue(agent.startedAt) || Date.now(),
+    };
+  }).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function normalizeSubagentStatus(value: unknown): SubagentStatus {
+  if (value === "failed") return "error";
+  if (value === "cancelled") return "stopped";
+  if (
+    value === "queued" ||
+    value === "running" ||
+    value === "background" ||
+    value === "completed" ||
+    value === "steered" ||
+    value === "aborted" ||
+    value === "stopped" ||
+    value === "error"
+  ) {
+    return value;
+  }
+  return "running";
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

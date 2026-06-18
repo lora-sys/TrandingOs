@@ -23,6 +23,7 @@ export class ArtifactEngine {
     previewPayload?: unknown;
     sessionId?: string;
     workflowRunId?: string;
+    workspaceId?: string;
     payload?: unknown;
   }) {
     const dir = resolve(this.paths.artifactsDir, input.type);
@@ -32,6 +33,7 @@ export class ArtifactEngine {
     const artifactId = this.repos.createArtifact({
       sessionId: input.sessionId,
       workflowRunId: input.workflowRunId,
+      workspaceId: input.workspaceId,
       type: input.type,
       title: input.title,
       summary: input.summary,

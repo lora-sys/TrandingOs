@@ -1,7 +1,7 @@
 import { BotIcon, CheckCircle2Icon, Clock3Icon, XCircleIcon } from "lucide-react";
 
 import { formatTokens } from "../../core/format";
-import { canOpenSubagentDetail, formatDuration, subagentStatusLabel } from "../../core/subagents";
+import { formatDuration, subagentStatusLabel } from "../../core/subagents";
 import type { SubagentViewState } from "../../core/types";
 
 export function WorkspaceStatusFloat({
@@ -35,7 +35,6 @@ export function WorkspaceStatusFloat({
 }
 
 function SubagentFloatRow({ agent, onOpen }: { agent: SubagentViewState; onOpen: () => void }) {
-  const canOpen = canOpenSubagentDetail(agent);
   const content = (
     <>
       <StatusIcon agent={agent} />
@@ -49,10 +48,6 @@ function SubagentFloatRow({ agent, onOpen }: { agent: SubagentViewState; onOpen:
       <div className="shrink-0 text-muted-foreground text-xs">{subagentMetric(agent)}</div>
     </>
   );
-
-  if (!canOpen) {
-    return <div className="flex items-center gap-2 rounded-md px-2 py-1.5">{content}</div>;
-  }
 
   return (
     <button

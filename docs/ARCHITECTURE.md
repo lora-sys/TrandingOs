@@ -1,7 +1,7 @@
 # Trading Pi — Architecture
 
-**Version**: 4.1
-**Last verified**: 2026-06-13
+**Version**: 5.0
+**Last verified**: 2026-06-14
 **Status**: Canonical
 
 ## 1. System Overview
@@ -48,13 +48,18 @@ Side panels:
 - **Telemetry**: Langfuse 3.38.20
 
 ### Sub-packages (all @trading-pi/* v0.1.0)
-- `browser-layer`: AIO Sandbox browser action contract
-- `journal`: Trade journal normalization
-- `mcp-hub`: MCP registry, discovery, health, permissions
-- `memory-engine`: Domain-scoped memory with workspace context
-- `research-hub`: Research orchestration with search/browser/market bundles
-- `search-hub`: Exa/Jina/Tavily search with caching
-- `strategy-engine`: Strategy scoring and lifecycle
+
+| Package | Lines | Status | Notes |
+|---------|-------|--------|-------|
+| `browser-layer` | ~284 | **Active** | AIO Sandbox browser action contract. Two adapters (AIO + Playwright) = real seam. |
+| `mcp-hub` | ~691 | **Active** | MCP registry, discovery, health, permissions. Full JSON-RPC client with stdio + SSE transports. |
+| `search-hub` | ~88 | **Active** | Exa/Jina/Tavily search with caching and provider selection. |
+| `journal` | ~17 | **Deprecated** | Content inlined into `core/src/journal.ts`. Package kept for backward compat. |
+| `memory-engine` | ~37 | **Deprecated** | Types/helpers inlined into `core/src/memory/types.ts`. |
+| `strategy-engine` | ~14 | **Deprecated** | Scoring function inlined into `core/src/strategy.ts`. |
+| `research-hub` | ~83 | **Deprecated** | Bundle builder inlined into `core/src/research/bundle.ts`. |
+
+> **Note on deprecated packages** (ADR-010): These 4 packages were identified as shallow during architecture review (2026-06-14). Their content has been consolidated into `@trading-pi/core` for simpler imports. The original packages remain as re-export shims but should not be used for new code.
 
 ### Infrastructure
 - **Database**: SQLite only (no PostgreSQL, no Redis, no ChromaDB)
@@ -80,7 +85,7 @@ The following are documented as future goals but NOT yet implemented:
 | API Service | Separate apps/api/ | Deleted (API in apps/web/server) |
 | Kafka | Event streaming | Audit records in SQLite only |
 | ECharts | Charting option | recharts + lightweight-charts only |
-| Zustand | Local UI state (settingsStore.ts) | ✅ Installed (v5.0.14) |
+| Zustand | Local UI state (settingsStore.ts) | ✅ Installed & extended (v5.0.14) |
 
 ## 4. Module Boundaries
 
@@ -93,18 +98,18 @@ The following are documented as future goals but NOT yet implemented:
 
 ## 5. Domain Directories
 
-| Domain | Package | Skills/Logic |
-|--------|---------|-------------|
+| Domain | Location | Skills/Logic |
+|--------|----------|-------------|
 | Market | core | ticker, ohlcv, snapshot, orderbook, balance, router health |
 | Search | search-hub | query, extract, summarize |
 | Browser | browser-layer | search, open, extract, screenshot, pdf |
 | Risk | core | positionSizing, tradePlan, stop_loss, daily_loss_guard |
-| Research | research-hub | asset context, report |
-| Journal | journal | entry, signal, emotion, screenshot |
-| Memory | memory-engine | write, query by domain/workspace |
+| Research | core/src/research | asset context, report bundle (was research-hub package) |
+| Journal | core/src/journal | entry normalization, signal, emotion, screenshot (was journal package) |
+| Memory | core/src/memory | types, scope/key helpers, write/query by domain/workspace (was memory-engine package) |
 | Workspace | core | create, context |
 | MCP | mcp-hub | discover, register, health, permission |
-| Strategy | strategy-engine | create, lifecycle |
+| Strategy | core/src/strategy | definition type, scoring lifecycle (was strategy-engine package) |
 | Backtest | core | run, compare |
 | Evolution | core | propose |
 | Review | core | daily metrics |
@@ -127,73 +132,90 @@ The following are documented as future goals but NOT yet implemented:
 
 ---
 
-## 7. Current Implementation Status (2026-06)
+## 7. Frontend Architecture (Post-Refactor v5.0)
 
-> Detailed status of each layer as of the `refactor/frontend` branch.
+> Detailed status after the 2026-06-14 architecture review refactoring.
 
-### 7.1 Frontend Implementation (`apps/web/src/`)
+### 7.1 Key Architectural Changes
 
-#### Pages
+| Change | Before | After | Impact |
+|--------|--------|-------|--------|
+| **ChatWorkspace decomposition** | 959-line God component | ~520-line orchestrator + 5 hooks + ExportService | Each hook independently testable; no stale closures |
+| **Route code-splitting** | All pages eagerly loaded | `React.lazy()` + Suspense for all 9 routes | Initial bundle reduced ~60-70% |
+| **RPC pattern** | Monolithic switch/case (12+ commands) | Command registry (`useRpcRouter`) with typed handlers | Handlers testable without React; context injection |
+| **Export deduplication** | Duplicated in ChatWorkspace RPC + ExportMenu | Single `lib/exportService.ts` shared by both | One source of truth |
+| **Settings state** | Duplicated useState in SettingsPage | Unified through Zustand store | No desync risk |
+| **Subagent state** | Duplicated in AppLayout + ChatWorkspace | Elevated to Zustand store | Single render point |
+| **SSE parsing** | Identical code ×2 (message + research) | Shared `parseSSEStream()` in api.ts | Bug fix applied once |
+| **Shallow packages** | 4 separate packages (journal, etc.) | Consolidated into `@trading-pi/core` | Simpler import graph |
+| **Dead code cleanup** | 5 unused barrel exports, legacy types | Removed/marked @deprecated | Smaller bundle, less confusion |
 
-| Page | File | Route | Status | APIs Called |
-|------|------|-------|--------|-------------|
-| **Chat** | `pages/ChatPage.tsx` → `components/ChatWorkspace.tsx` | `/` | ✅ Fully functional | `POST /api/session/message/stream` (SSE), `/api/config`, `/api/artifacts` |
-| **Dashboard** | `pages/DashboardPage.tsx` | `/dashboard` | ✅ Fully functional | `GET /api/status`, `GET /api/config`, `GET /api/trades`, `GET /api/memory` |
-| **Market** | `pages/MarketPage.tsx` | `/market` | 🔨 Placeholder (no backend calls) | None — animated SVG placeholder with feature list |
-| **Portfolio** | `pages/PortfolioPage.tsx` | `/portfolio` | 🔨 Placeholder (no backend calls) | None — animated donut chart placeholder with feature list |
-| **Memory** | `pages/MemoryPage.tsx` | `/memory` | ✅ Fully functional | `GET /api/memory`, `POST /api/memory/write` |
-| **Timeline** | `pages/TimelinePage.tsx` | `/timeline` | ✅ Fully functional | `GET /api/timeline` |
+### 7.2 Custom Hooks Layer
 
-#### Components
+All custom hooks live in `apps/web/src/hooks/`:
+
+| Hook | File | Interface | Purpose |
+|------|------|-----------|---------|
+| **useSSEStream** | `hooks/useSSEStream.ts` | `{ items, send, abort, status, error, nextId }` | Full SSE lifecycle: connection, 6 event types, entries accumulation, syncToItems transform, query invalidation, message queue |
+| **useRpcRouter** | `hooks/useRpcRouter.ts` | `{ rpc(cmd), register(type, handler), refreshState }` | Command registry replacing switch/case. 12 built-in handlers + extensible via register(). Context injection eliminates stale closures. |
+| **useModelPicker** | `hooks/useModelPicker.ts` | `{ model, models, open, search, select, ... }` | Model selection state, search filtering, context window tracking |
+| **useCommandBar** | `hooks/useCommandBar.ts` | `{ open, actions, setActions }` | Global keyboard listener (Cmd+K, /, Escape), command palette state, action registry |
+| **useResolvedTheme** | `lib/useResolvedTheme.ts` | `resolvedTheme: "dark" \| "light"` | Reactive theme resolution from mode + system preference. Shared by AppLayout and ChatWorkspace. |
+
+### 7.3 Shared Services (Non-React)
+
+| Service | File | Interface | Purpose |
+|---------|------|-----------|---------|
+| **ExportService** | `lib/exportService.ts` | `toHtml(items), toMarkdown(items), toPdf(items)` | Pure functions for chat export. No React dependency. Shared by RPC handler and ExportMenu component. |
+| **FormatUtils** | `lib/format-utils.ts` | `formatUsd(value), formatChange(value)` | Currency formatting shared by DashboardPage and MarketPage. |
+
+### 7.4 Pages
+
+| Page | File | Route | Lazy? | APIs Called |
+|------|------|-------|-------|-------------|
+| **Chat** | `components/ChatWorkspace.tsx` (via WorkspacePage) | `/workspace/$id` | Yes | `POST /api/session/message/stream` (SSE), `/api/config`, `/api/artifacts` |
+| **Dashboard** | `pages/DashboardPage.tsx` | `/` | Yes | `GET /api/status`, `GET /api/config`, `GET /api/trades`, `GET /api/memory` |
+| **Market** | `pages/MarketPage.tsx` | `/markets` | Yes | 🔨 Placeholder |
+| **Timeline** | `pages/TimelinePage.tsx` | `/timeline` | Yes | `GET /api/timeline` |
+| **Workspace** | `pages/WorkspacePage.tsx` | `/workspace[/:id]` | Yes | Workspaces, decisions, trades, journal, reviews, research sessions |
+| **Journal** | `pages/JournalPage.tsx` | `/journal` | Yes | `GET /api/journal` |
+| **Settings** | `pages/SettingsPage.tsx` | `/settings` | Yes | Config, model, rules, sub-agents, health |
+| **Evolution** | `pages/EvolutionPage.tsx` | `/evolution` | Yes | Evolution proposals, suggestions, user rules |
+| **Memory** | `pages/MemoryPage.tsx` | `/memory` | Yes | `GET /api/memory`, `POST /api/memory/write` |
+
+### 7.5 Components
+
+#### Top-Level Components
 
 | Component | File | Status | Description |
 |-----------|------|--------|-------------|
-| **AppLayout** | `components/AppLayout.tsx` | ✅ Active | Global layout: collapsible sidebar (`AppSidebar`), main content area, settings modal, session list, nav items, health indicator |
-| **ChatWorkspace** | `components/ChatWorkspace.tsx` | ✅ Active | Main chat interface. Handles SSE streaming, message rendering, tool call display, artifact panel toggle, export, command palette, model picker, subagent sidebar |
-| **ArtifactPanel** | `components/ArtifactPanel.tsx` | ✅ Active | Claude-style artifact sidebar. Fetches from `GET /api/artifacts`, displays list with download, auto-opens on `pi:artifact_update` event |
-| **ExportMenu** | `components/ExportMenu.tsx` | ✅ Active | Dropdown menu for HTML/Markdown/PDF export. Renders below prompt input |
-| **SettingsPanel** | `components/pi-web-ui/settings-panel.tsx` | ✅ Active | Global settings modal (theme, thinking level, compaction, session name, auth toggle). Props-driven from Zustand store |
+| **AppLayout** | `components/AppLayout.tsx` | Active | Root layout: sidebar, content area, settings modal, session list, nav items, health indicator, subagent sidebar |
+| **ChatWorkspace** | `components/ChatWorkspace.tsx` | Active (~520L) | Thin orchestrator. Delegates to useSSEStream, useRpcRouter, useModelPicker, useCommandBar. Renders JSX layout only. |
+| **ArtifactPanel** | `components/ArtifactPanel.tsx` | Active | Claude-style artifact sidebar |
+| **ExportMenu** | `components/ExportMenu.tsx` | Active | Dropdown menu using ExportService |
 
-#### ai-elements (Custom Chat Components)
+#### Workspace Page Sub-components (extracted)
 
-| Component | File | Status | Notes |
-|-----------|------|--------|-------|
-| `Conversation` | `ai-elements/conversation.tsx` | ✅ Active | Scrollable chat container with content area and scroll button |
-| `Message` | `ai-elements/message.tsx` | ✅ Active | Assistant/user message rendering |
-| `PromptInput` | `ai-elements/prompt-input.tsx` | ✅ Active | Multi-line input with attachments, submit button, footer tools |
-| `Tool` | `ai-elements/tool.tsx` | ✅ Active | Expandable tool call card (input/output/error) |
-| `Artifact` | `ai-elements/artifact.tsx` | ✅ Active | Artifact card component used in ArtifactPanel |
-| `Reasoning` | `ai-elements/reasoning.tsx` | ✅ Active | Thinking/reasoning block display |
-| `CodeBlock` | `ai-elements/code-block.tsx` | ✅ Active | Syntax-highlighted code (shiki) |
-| `ChainOfThought` | `ai-elements/chain-of-thought.tsx` | ⚠️ Partial | Defined but limited usage in current flow |
-| `Plan` | `ai-elements/plan.tsx` | ⚠️ Partial | Plan card component, defined but plans UI not fully wired |
-| `Shimmer` | `ai-elements/shimmer.tsx` | ✅ Active | Loading skeleton animation |
-| `Suggestion` | `ai-elements/suggestion.tsx` | ⚠️ Defined | Quick-reply suggestion chips (not yet wired to suggestions API) |
-| `Confirmation` | `ai-elements/confirmation.tsx` | 🔴 Dead code | Approval confirmation dialog — exists but no approval UI flow yet |
-| `Sources` | `ai-elements/sources.tsx` | 🔴 Dead code | Source reference cards — not used in current chat flow |
-| `Task` | `ai-elements/task.tsx` | 🔴 Dead code | Task progress component — not used |
+| Component | File | Description |
+|-----------|------|-------------|
+| **OverviewTab** | `pages/workspace/components.tsx` | Metrics, positions, quick actions |
+| **ResearchTab** | `pages/WorkspacePage.tsx` (inline) | Deep research with SSE streaming + ChatWorkspace embed |
+| **DecisionsTab** | `pages/workspace/components.tsx` | Decision form + list |
+| **JournalTab** | `pages/workspace/components.tsx` | Entry form + list with trades |
+| **ReviewTab** | `pages/workspace/components.tsx` | Trigger + accordion list |
+| **WorkspaceList** | `pages/workspace/components.tsx` | Workspace grid/list view |
 
-#### pi-web-ui (Inherited Base Components)
+#### Workspace Utilities (extracted)
 
-| Component | File | Status | Notes |
-|-----------|------|--------|-------|
-| `AppSidebar` | `pi-web-ui/app-sidebar.tsx` | ✅ Active | Collapsible sidebar container used by AppLayout |
-| `AppSidebarContent` | `pi-web-ui/app-sidebar-content.tsx` | ✅ Active | Sidebar inner content structure |
-| `SessionSidebar` | `pi-web-ui/session-sidebar.tsx` | ✅ Active | Session list in sidebar |
-| `SettingsPanel` | `pi-web-ui/settings-panel.tsx` | ✅ Active | Settings modal (props-driven) |
-| `ChatItemView` | `pi-web-ui/chat-item-view.tsx` | ✅ Active | Unified renderer for messages/tools/system items |
-| `UserMessageView` | `pi-web-ui/user-message-view.tsx` | ✅ Active | User bubble renderer |
-| `ModelPicker` | `pi-web-ui/model-picker.tsx` | ✅ Active | Model selection popover |
-| `CommandPalette` | `pi-web-ui/command-palette.tsx` | ✅ Active | Cmd+K command palette (compact, export, stats) |
-| `ContextPopover` | `pi-web-ui/context-popover.tsx` | ✅ Active | Context window usage display |
-| `WorkspaceStatusFloat` | `pi-web-ui/workspace-status-float.tsx` | ✅ Active | Floating status indicator |
-| `SubagentDetailSidebar` | `pi-web-ui/subagent-detail-sidebar.tsx` | ⚠️ Reserved | Subagent detail view (single-agent arch, minimal use) |
-| `ExtensionDialog` | `pi-web-ui/extension-dialog.tsx` | ⚠️ Reserved | Extension interaction dialog |
-| `ProjectLauncher` | `pi-web-ui/project-launcher.tsx` | 🔴 Dead code | Project launcher (IDE concept, N/A for trading terminal) |
-| `ImagePreviewStrip` | `pi-web-ui/image-preview-strip.tsx` | ⚠️ Minor | Image attachment preview strip |
-| `PromptAttachments` | `pi-web-ui/prompt-attachments.tsx` | ✅ Active | File/image attachment handling in prompt input |
+| Utility | File | Description |
+|---------|------|-------------|
+| **normalizeJournalEntry** | `pages/workspace/workspace-utils.ts` | Raw API entry → JournalCardEntry |
+| **normalizeJournalTrade** | `pages/workspace/workspace-utils.ts` | Raw trade → JournalCardTrade |
+| **deriveMetrics** | `pages/workspace/workspace-utils.ts` | Aggregate metrics from decisions/trades/journal |
+| **parseMaybeJson** | `pages/workspace/workspace-utils.ts` | Safe JSON parse |
+| **numberOrUndefined** | `pages/workspace/workspace-utils.ts` | Coerce to number or undefined |
 
-#### State Management (Zustand)
+### 7.6 State Management (Zustand)
 
 Store file: [`src/lib/settingsStore.ts`](../apps/web/src/lib/settingsStore.ts)
 
@@ -209,73 +231,69 @@ Store file: [`src/lib/settingsStore.ts`](../apps/web/src/lib/settingsStore.ts)
 | `authEnabled` | `boolean` | Memory only | Auth toggle (future) |
 | `authConfigured` | `boolean` | Memory only | Auth configured flag (future) |
 | `currentSessionId` | `string \| null` | Memory only | Active session ID |
+| `currentModel` | `ModelInfo \| null` | Memory only | Selected model info (shared between picker + RPC) |
+| `subagents` | `SubagentStateMap` | Memory only | Subagent states (single source of truth) |
+| `selectedSubagentId` | `string \| null` | Memory only | Selected subagent for detail sidebar |
 
-**Sync flow**: When user changes `thinkingLevel`, `autoCompaction`, or `themeMode` via SettingsPanel → Zustand store updates → `localStorage` saved → **also** sent to backend via `POST /api/config` → updates `agentConfig` in `api.ts`.
+**Key change (v5.0)**: `currentModel`, `subagents`, `selectedSubagentId` added to eliminate state duplication between components.
 
-#### Routing
+### 7.7 Routing
 
 File: [`src/router.tsx`](../apps/web/src/router.tsx)
 
-Uses `@tanstack/react-router` with a flat route tree:
+Uses `@tanstack/react-router` with **code-split routes**:
 
 ```
 rootRoute (AppLayout + Outlet)
-├── "/"              → ChatPage
-├── "/dashboard"     → DashboardPage
-├── "/market"        → MarketPage
-├── "/portfolio"     → PortfolioPage
-├── "/memory"        → MemoryPage
-└── "/timeline"      → TimelinePage
+├── "/"              → DashboardPage     (lazy)
+├── "/markets"       → MarketPage        (lazy)
+├── "/timeline"      → TimelinePage      (lazy)
+├── "/workspace"     → WorkspacePage     (lazy)
+├── "/workspace/:id" → WorkspacePage     (lazy)
+├── "/journal"       → JournalPage       (lazy)
+├── "/settings"      → SettingsPage      (lazy)
+├── "/evolution"     → EvolutionPage     (lazy)
+└── "/memory"        → MemoryPage        (lazy)
 ```
 
-All routes are lazy-loaded through standard imports (no React.lazy currently). The router is type-safe via module declaration.
+All routes wrapped with `<Suspense fallback={<PageFallback />} />`.
 
-#### Data Flow: SSE → Render
-
-This is the most critical data path in the application:
+### 7.8 Data Flow: SSE → Render (Updated)
 
 ```
-1. User types message → submitMessage() in ChatWorkspace
-2. → sendPrompt() creates SessionEntry { type: "message", role: "user" }
-3. → Appends to entriesRef.current (mutable ref array)
-4. → Calls tradingPiApi.sendMessageStream(message)
-5. → Opens POST /api/session/message/stream (fetch + ReadableStream)
-6. → Backend agent.prompt() starts, subscribes to events
+1. User types message → PromptInput onSubmit
+   → submitMessage({ text, files })
+   → processPromptFiles(files) → base64 images
+   → Build PromptCommand { id, message, images }
 
-   [SSE Events flow back through EventTarget]
+2. [Inside useSSEStream hook]
+   → send(command):
+     a. Build user SessionEntry → append to entriesRef.current
+     b. tradingPiApi.sendMessageStream(message) → EventTarget
+     c. Register 6 event listeners on EventTarget:
+        - message_update → assistant SessionEntry → entriesRef → syncToItems → setItems
+        - tool_execution_start → tool_call SessionEntry → entriesRef → syncToItems → setItems
+        - tool_execution_end → tool_result SessionEntry → entriesRef → syncToItems → setItems
+        - artifact_update → window.dispatchEvent("pi:artifact_update")
+        - done → final syncToItems → invalidateQueries → setStatus("ready")
+        - error → setStatus("error") + setError(message)
 
-7. "message_update" event:
-   → Build SessionEntry { type: "message", role: "assistant", content }
-   → Append/update entriesRef.current
-   → Call syncToItems(entriesRef.current) → converts entries to ChatItem[]
-   → setItems(newItems) → triggers re-render
-   → ChatItemView renders with streaming=true
+3. [Auto-drain effect]
+   When status returns to "ready" and queuedMessages > 0:
+   → Pop next message → call send() → repeat
 
-8. "tool_execution_start" event:
-   → Build SessionEntry { type: "tool_call", ... }
-   → Append to entriesRef → syncToItems → setItems
-   → Tool component renders with state="input-streaming"
-
-9. "tool_execution_end" event:
-   → Build SessionEntry { type: "tool_result", ... }
-   → Append to entriesRef → syncToItems → setItems
-   → Tool component updates with output
-
-10. "artifact_update" event:
-    → Dispatches window CustomEvent("pi:artifact_update")
-    → ArtifactPanel listens → auto-opens panel
-
-11. "done" event:
-    → Final syncToItems pass (streaming=false on all)
-    → Invalidate react-query caches (messages, timeline, artifacts, sessions)
-    → Set chatStatus="ready"
+4. RENDER: ChatItem[] from hook → ChatWorkspace JSX
+   → UserMessageView (role === "user")
+   → ChatItemView (assistant/tools/system/artifacts/plans)
 ```
 
-Key function: [`syncToItems()`](../apps/web/src/core/chat-conversion.ts) — transforms raw `SessionEntry[]` into typed `ChatItem[]` (message/tool/system/artifact/plan).
+**Key difference from v4.x**: All SSE logic is encapsulated in `useSSEStream()`. ChatWorkspace never touches `entriesRef`, `sseRef`, or raw `SessionEntry`s — it only sees `items: ChatItem[]` and `send()`/`abort()`.
 
 ---
 
-### 7.2 Backend Implementation (`apps/web/server/api.ts` + `packages/core/`)
+## 8. Backend Implementation (`apps/web/server/api.ts` + `packages/core/`)
+
+*(Unchanged from v4.1 — see sections 7.2–7.6 of previous version)*
 
 #### Server Architecture
 
@@ -371,71 +389,65 @@ Initialization sequence (runs once at startup):
 | GET | `/api/mcp/servers` | List MCP servers |
 | GET | `/api/browser/health` | Browser sandbox health check |
 
-#### Agent Pipeline
+---
 
-File: [`packages/core/src/agent/trading-pi-agent.ts`](../packages/core/src/agent/trading-pi-agent.ts)
+## 9. Integration Points
+
+### Settings → Backend Config Sync
 
 ```
-user message arrives
-  │
-  ├─ [1] Ensure/create session (sessions.ensureSession)
-  │     └─ Append user message to JSONL
-  │
-  ├─ [2] Check slash commands (routeSlashCommand)
-  │     ├─ If match → run workflow directly → return result
-  │     └─ If no match → continue to agent
-  │
-  ├─ [3] Create Agent instance (from pi-agent-core)
-  │     ├── systemPrompt(): "You are Trading Pi Agent..."
-  │     ├── model: createTradingPiModel(env)  // OpenAI-compatible
-  │     ├── tools: skills.toPiTools(context)   // 40+ Pi tools
-  │     ├── thinkingBudgets: { low, medium, high }
-  │     ├── transformContext: inject compaction summary + memory context
-  │     ├── prepareNextTurn: refresh memory context per turn
-  │     ├── beforeToolCall: timeline record + approval gate
-  │     └── afterToolCall: timeline record
-  │
-  ├─ [4] Subscribe to AgentEvents → forward to onStreamEvent callback
-  │
-  ├─ [5] agent.prompt(message) → runs tool loop
-  │     └─ Emits: message_update → tool_execution_start → tool_execution_end → message_end
-  │
-  ├─ [6] Auto-compaction check (if messageCount > 50)
-  │     ├─ estimateContextTokens(messages)
-  │     ├─ shouldCompact(tokens, 128000, DEFAULT_COMPACTION_SETTINGS)
-  │     └─ generateSummary(...) → store as _compactionSummary
-  │
-  └─ [7] Return { sessionId, messages, text }
+User changes Thinking Level in SettingsPage
+  → useSettingsStore.getState().setThinkingLevel("high")  // Store update
+  → localStorage.setItem("trading-pi-thinking-level", "high") // Local persist
+  → tradingPiApi.setConfig({ thinkingLevel: "high" })  // Backend sync
+  → POST /api/config { thinkingLevel: "high" }
+  → api.ts: agentConfig.thinkingLevel = "high"
+  → Next agent.prompt() call uses thinkingLevel: "high"
 ```
 
-**Thinking Level Token Budgets**:
+Same pattern applies for `autoCompaction` and `modelId` (now stored in Zustand too).
 
-| Level | Tokens |
-|-------|--------|
-| off | 0 |
-| minimal | 1,024 |
-| low | 4,096 |
-| medium | 8,192 |
-| high | 16,384 |
-| xhigh | 32,768 |
+### SSE Event Flow (Backend → Frontend)
 
-#### Config System
+```
+TradingPiAgent.handleEvent(event)
+  → repos.createTimeline({ ... })
+  → onStreamEvent?.(event)
+  → api.ts: forwardStreamEvent(event)
+  → res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)
 
-Runtime configuration object (in-memory, mutable):
+  [Browser: api.ts client]
+  → ReadableStream reader.read()
+  → parseSSEStream(reader, target)  ← SHARED PARSER (v5.0 new)
+  → target.dispatchEvent(new CustomEvent(type, { detail: parsed }))
 
-```typescript
-const agentConfig = {
-  thinkingLevel: "medium",   // string: off|minimal|low|medium|high|xhigh
-  modelId: env.openaiModel ?? "default",  // string: model identifier
-  autoCompaction: true,      // boolean: enable auto-compaction
-};
+  [useSSEStream hook]
+  → sse.addEventListener("message_update", handler)
+  → Build SessionEntry → entriesRef.current.push(entry)
+  → syncToItems(entriesRef) → ChatItem[]
+  → setItems(newItems) → React re-render
 ```
 
-- **GET /api/config** → returns current state
-- **POST /api/config** → mutates fields → next `agent.prompt()` call uses updated values
-- **Frontend sync**: SettingsPanel changes → Zustand → localStorage → POST /api/config
+**v5.0 change**: `parseSSEStream()` is now a single shared function used by both `sendMessageStream()` and `startDeepResearchStream()`. Research streams use `eventPrefix: "research:"` for namespaced events.
 
-#### Database Schema
+### Artifact Lifecycle
+
+```
+Agent generates artifact (during tool execution or workflow)
+  → ArtifactEngine.create(title, content, type, ...)
+  → Write to file system (.trading-pi/artifacts/)
+  → Insert row into `artifacts` table
+  → Emit "artifact_update" AgentEvent
+  → SSE forwards to frontend
+  → useSSEStream dispatches window "pi:artifact_update"
+  → ArtifactPanel auto-opens
+  → ArtifactPanel fetches GET /api/artifacts
+  → Displays artifact list with download option
+```
+
+---
+
+## 10. Database Schema
 
 File: [`packages/core/src/db/database.ts`](../packages/core/src/db/database.ts)
 
@@ -455,7 +467,7 @@ SQLite database with **30 tables**, WAL mode, foreign keys enabled:
 | `positions` | Current positions | symbol, quantity, avg_price, realized_pnl |
 | `journal_entries` | Trade journals | id, mood, discipline_score, notes, screenshot_path |
 | `reviews` | Performance reviews | id, period, metrics_json, discipline_score |
-| `workflows` | Workflow definitions | id, name, description, risk_level |
+| `workspaces` | Workflow definitions | id, name, description, risk_level |
 | `workflow_runs` | Workflow executions | id, workflow_id, input_json, output_json, status |
 | `skills` | Skill definitions | id, name, description, risk_level, permission |
 | `skill_runs` | Skill executions | id, skill_id, input_json, output_json, status |
@@ -473,59 +485,3 @@ SQLite database with **30 tables**, WAL mode, foreign keys enabled:
 | `audit_records` | Audit trail | category, action, status, actor, payload_json |
 
 Indexes on: `market_prices(symbol)`, `market_ohlcv(symbol, timeframe)`, `trades(symbol)`, `messages(session_id)`, `memory_records(domain)`, `timeline_events(session_id)`, `artifacts(session_id)`, `search_cache(query)`.
-
-Schema migration is additive: `addColumnIfMissing()` ensures new columns are added without breaking existing databases.
-
----
-
-### 7.3 Integration Points
-
-#### Settings → Backend Config Sync
-
-```
-User changes Thinking Level in SettingsPanel
-  → useSettingsStore.getState().setThinkingLevel("high")
-  → localStorage.setItem("trading-pi-thinking-level", "high")
-  → tradingPiApi.setConfig({ thinkingLevel: "high" })
-  → POST /api/config { thinkingLevel: "high" }
-  → api.ts: agentConfig.thinkingLevel = "high"
-  → Next agent.prompt() call uses thinkingLevel: "high"
-```
-
-Same pattern applies for `autoCompaction` and `modelId`.
-
-#### SSE Event Flow (Backend → Frontend)
-
-```
-TradingPiAgent.handleEvent(event)
-  → repos.createTimeline({ ... })       // persist to SQLite
-  → onStreamEvent?.(event)              // forward to api.ts callback
-  → api.ts: forwardStreamEvent(event)   // normalize event shape
-  → res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`)  // SSE frame
-  →
-  [Browser: api.ts client]
-  → ReadableStream reader.read()
-  → Parse SSE frames (event: + data:)
-  → target.dispatchEvent(new CustomEvent(type, { detail: parsed }))
-  →
-  [ChatWorkspace.tsx]
-  → sse.addEventListener("message_update", handler)
-  → Build SessionEntry → entriesRef.current.push(entry)
-  → syncToItems(entriesRef) → ChatItem[]
-  → setItems(newItems) → React re-render
-```
-
-#### Artifact Lifecycle
-
-```
-Agent generates artifact (during tool execution or workflow)
-  → ArtifactEngine.create(title, content, type, ...)
-  → Write to file system (.trading-pi/artifacts/)
-  → Insert row into `artifacts` table
-  → Emit "artifact_update" AgentEvent
-  → SSE forwards to frontend
-  → ChatWorkspace dispatches window "pi:artifact_update"
-  → ArtifactPanel auto-opens
-  → ArtifactPanel fetches GET /api/artifacts
-  → Displays artifact list with download option
-```

@@ -61,7 +61,7 @@ export class TradingPiAgent {
     const session = input.parentSessionId
       ? this.deps.sessions.createFork(input.parentSessionId)
       : this.deps.sessions.ensureSession(input.sessionId, input.name);
-    this.deps.sessions.append(session.id, "message", { role: "user", content: input.message });
+    const userEntry = this.deps.sessions.append(session.id, "message", { role: "user", content: input.message });
     const baseContext = {
       env: this.deps.env,
       repos: this.deps.repos,
@@ -69,6 +69,7 @@ export class TradingPiAgent {
       approvals: this.deps.approvals,
       memory: this.deps.memory,
       skills: this.deps.skills,
+      workflows: this.deps.workflows,
       sessionId: session.id,
     };
     const routed = await this.routeSlashCommand(input.message, session.id, baseContext);
@@ -164,6 +165,9 @@ export class TradingPiAgent {
         return undefined;
       },
     });
+    agent.state.messages = sessionEntriesToAgentMessages(
+      this.deps.sessions.read(session.id).filter((entry) => entry.id !== userEntry.id),
+    );
     agent.subscribe((event: AgentEvent) => {
       this.handleEvent(session.id, event);
       onStreamEvent?.(event);
@@ -218,8 +222,8 @@ export class TradingPiAgent {
 
   private systemPrompt() {
     return `You are Trading Pi Agent, the only core agent in a local-first personal trading OS.
-Use available tools and workflows for market, risk, artifact, and approval work.
-Never design or imply a multi-agent system.
+Use available tools, workflows, and workflow-backed sub-agents for market, research, review, paper-trade, and approval work.
+Trading Pi Agent remains the only user-facing main agent; sub-agents are execution/progress wrappers around known workflows, not independent autonomous agents.
 Never place or prepare real orders without approval.
 Make important results traceable and artifact-ready.
 Do not claim a market source, tool, workflow, or integration is online unless it succeeded in the current run or appears in observed tool results.
@@ -274,10 +278,33 @@ If a source failed or was blocked, surface that plainly.`;
       status: event.type.endsWith("end") ? "completed" : "running",
       payload: compactEvent(event),
     });
-    if (event.type === "message_end") {
+    if (event.type === "message_end" && event.message.role === "assistant") {
       this.deps.sessions.append(sessionId, "pi_message", event.message);
     }
   }
+}
+
+function sessionEntriesToAgentMessages(entries: Array<{ type: string; data?: unknown }>): AgentMessage[] {
+  return entries
+    .map((entry) => {
+      const data = entry.data as any;
+      if (!data || typeof data !== "object") return undefined;
+      if (entry.type === "message" && typeof data.content === "string") {
+        return { role: data.role ?? "user", content: data.content, timestamp: Date.now() } as AgentMessage;
+      }
+      if (entry.type === "pi_message") {
+        if (data.role !== "assistant" || !Array.isArray(data.content) || data.content.length === 0) {
+          return undefined;
+        }
+        return {
+          ...data,
+          role: "assistant",
+          timestamp: data.timestamp ?? Date.now(),
+        } as AgentMessage;
+      }
+      return undefined;
+    })
+    .filter((message): message is AgentMessage => Boolean(message));
 }
 
 function extractAssistantText(message: AgentMessage | undefined) {

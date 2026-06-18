@@ -1,5 +1,5 @@
 import type { Repositories } from "../db/repositories.js";
-import type { MemoryDomain } from "@trading-pi/memory-engine";
+import type { MemoryDomain } from "../memory/types.js";
 
 export class MemoryStore {
   constructor(private readonly repos: Repositories) {}
@@ -12,6 +12,10 @@ export class MemoryStore {
     return this.repos.db
       .prepare("SELECT * FROM memory_records WHERE scope = ? ORDER BY importance DESC, updated_at DESC")
       .all(scope) as Array<{ scope: string; key: string; value: string }>;
+  }
+
+  listAll(limit = 500) {
+    return this.repos.queryMemory({ limit });
   }
 
   write(input: {
@@ -29,6 +33,10 @@ export class MemoryStore {
 
   query(input: { domain?: MemoryDomain; workspaceId?: string; q?: string; limit?: number }) {
     return this.repos.queryMemory(input);
+  }
+
+  delete(id: string) {
+    return this.repos.deleteMemory(id);
   }
 
   domainContext(domain: MemoryDomain, workspaceId?: string) {

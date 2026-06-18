@@ -36,6 +36,7 @@
 
 :root {
   --radius: 0.625rem;
+  --mobile-bottom-nav-height: calc(3.5rem + env(safe-area-inset-bottom));
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -95,6 +96,15 @@
     font-family: "Geist Variable", "Inter", "SF Pro Display", system-ui, sans-serif;
   }
 
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Geist Variable", "Inter", "SF Pro Display", system-ui, sans-serif;
+  }
+
   button,
   input,
   textarea {
@@ -125,7 +135,6 @@
   .text-profit { color: oklch(0.72 0.18 155); }
   .text-loss { color: oklch(0.63 0.23 25); }
   .border-accent { border-color: oklch(0.72 0.15 195 / 40%); }
-  .bg-accent/90 { background: oklch(0.72 0.15 195 / 90%); }
   .animate-glow-pulse {
     animation: glow-pulse 2s ease-in-out infinite;
   }
@@ -134,4 +143,15 @@
 @keyframes glow-pulse {
   0%, 100% { box-shadow: 0 0 8px oklch(0.72 0.15 195 / 20%); }
   50% { box-shadow: 0 0 20px oklch(0.72 0.15 195 / 35%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }
