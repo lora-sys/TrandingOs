@@ -22,3 +22,14 @@ export type Portfolio = { positions: any[]; summary: any };
 export type Row = Record<string, string | number | boolean | null | undefined | string[]>;
 export type Status = { status?: string; env: any; paths: any; skills: number; workflows: number; mcpServers: number; browserSessions: number; memoryDomains: any[] };
 export type SessionMessages = { sessionId: string; messages: ChatMessage[] };
+
+export type ConfigModelsResponse = {
+  models: Array<{
+    id: string;
+    name: string;
+    reasoning?: boolean;
+    contextWindow: number;
+    provider: string;
+  }>;
+  current: string;
+};
