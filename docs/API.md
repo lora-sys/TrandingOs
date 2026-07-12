@@ -27,7 +27,7 @@ System health check.
 Agent runtime status.
 
 ```json
-{ "status": "idle", "skills": 40, "workflows": 9, "langfuseConfigured": true, "paths": {...} }
+{ "status": "idle", "skills": 69, "workflows": 9, "langfuseConfigured": true, "paths": {...} }
 ```
 
 ---

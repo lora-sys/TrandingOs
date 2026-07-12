@@ -25,7 +25,7 @@ Trading Pi OS is a **personal AI trading terminal** that runs entirely locally �
 |---------|---------|
 | **SSE Streaming** | Real-time token-by-token streaming via Server-Sent Events |
 | **Thinking Levels** | `off` / `minimal` / `low` / `medium` / `high` / `xhigh` (token budgets: 0–32768) |
-| **Tool Calls** | Agent invokes 40+ skills (market data, search, browser, risk, research, etc.) |
+| **Tool Calls** | Agent invokes 69 skills (market data, search, browser, risk, research, etc.) |
 | **Reasoning Display** | Expandable thinking/reasoning blocks in chat messages |
 | **Slash Commands** | `/research`, `/plan`, `/review-day`, `/backtest`, `/browser`, `/evolve`, `/bootstrap-os` |
 
@@ -139,7 +139,7 @@ trandingos/
 │   │       ├── ai/model.ts                # OpenAI-compatible model adapter
 │   │       ├── db/database.ts             # SQLite schema (30+ tables)
 │   │       ├── db/repositories.ts         # Data access layer
-│   │       ├── skills/                    # 40+ registered skills
+│   │       ├── skills/                    # 69 registered skills
 │   │       ├── workflows/                 # 9 DAG workflows
 │   │       ├── memory/memory-store.ts     # Domain-scoped memory
 │   │       ├── sessions/session-store.ts  # JSONL session management
@@ -171,7 +171,7 @@ Browser (Vite :5173)
   │                              ┌────┼────────┐────┐
   │                              ▼    ▼        ▼    ▼
   │                          TradingPiAgent  Skills  DB
-  │                          (pi-agent-core) (40+)  (SQLite)
+  │                          (pi-agent-core) (69)  (SQLite)
   │                                │
   │                           SSE Events ◀───┘
   │                                │
@@ -355,7 +355,7 @@ Full spec: [apps/web/design.md](apps/web/design.md)
 - [x] React 19 + Vite 7 + Tailwind v4 frontend
 - [x] 6-page SPA with TanStack Router
 - [x] SSE streaming chat with real-time token display
-- [x] 40+ agent skills across 15 domains
+- [x] 69 agent skills across 15 domains
 - [x] 9 DAG workflows with slash command routing
 - [x] SQLite persistence (30+ tables)
 - [x] Memory system (8 domains, semantic search)

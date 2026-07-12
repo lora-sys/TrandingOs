@@ -45,7 +45,7 @@ User → Chat (ai-elements Conversation + Message + PromptInput)
     → API Server (apps/web/server/api.ts, port 8787)
       → @trading-pi/core
         → Pi Mono (Agent Runtime)
-        → Skills (52 built-in, organized by category: market/research/browser/risk/execution/journal/airdrop)
+        → Skills (69 built-in, organized by category: market/research/browser/risk/execution/journal/airdrop)
         → Workflows (9 DAG workflows)
         → SQLite (persistence)
 

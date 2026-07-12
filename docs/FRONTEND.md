@@ -319,7 +319,7 @@ WorkspacePage
 - ❌ Generate HTML/Markdown/PDF export markup
 - ❌ Listen for keyboard events globally
 - ❌ Manage model selection state
-- ❌ Duplicate subagent state
+- ❌ Duplicate sub-agent (workflow wrapper) state
 
 ---
 
