@@ -274,6 +274,43 @@ function publicAgentConfig() {
   };
 }
 
+
+/* ── Available models (used by /api/config/models) ── */
+function listAvailableModels() {
+  const baseUrl = env.openaiBaseUrl ?? "";
+  const isOpenAICompatible = baseUrl.includes("/v1") || baseUrl.includes("openai") || baseUrl.length > 0;
+
+  const models: Array<{ id: string; name: string; reasoning?: boolean; contextWindow: number; provider: string }> = [];
+
+  // Always include the currently configured model as the primary option
+  models.push({
+    id: env.openaiModel,
+    name: env.openaiModel,
+    reasoning: env.openaiModel.toLowerCase().includes("reasoning") || env.openaiModel.toLowerCase().includes("longcat"),
+    contextWindow: 128_000,
+    provider: "trading-pi-openai-compatible",
+  });
+
+  // Include default OpenAI-compatible models only if baseUrl matches the schema
+  if (isOpenAICompatible) {
+    const defaults: Array<{ id: string; name: string; reasoning?: boolean; contextWindow: number; provider: string }> = [
+      { id: "LongCat-2.0", name: "LongCat-2.0", reasoning: true, contextWindow: 128_000, provider: "trading-pi-openai-compatible" },
+      { id: "gpt-4o-mini", name: "GPT-4o mini", contextWindow: 128_000, provider: "trading-pi-openai-compatible" },
+      { id: "gpt-4o", name: "GPT-4o", contextWindow: 128_000, provider: "trading-pi-openai-compatible" },
+    ];
+
+    for (const candidate of defaults) {
+      if (candidate.id === env.openaiModel) continue; // Already added as primary
+      models.push(candidate);
+    }
+  }
+
+  return {
+    models,
+    current: env.openaiModel,
+  };
+}
+
 /* ── Forward complete AgentEvent — no stripping ── */
 function forwardStreamEvent(event: any) {
   // message_update: forward full structured message with all content blocks
@@ -378,6 +415,9 @@ const server = createServer(async (req, res) => {
 	        }
 	      }
 	      return sendJson(res, publicAgentConfig());
+	    }
+	    if (url.pathname === "/api/config/models" && req.method === "GET") {
+	      return sendJson(res, listAvailableModels());
 	    }
     if (url.pathname === "/api/skills" && req.method === "GET") return sendJson(res, skills.list());
     if (url.pathname === "/api/workflows" && req.method === "GET") return sendJson(res, workflows.list());

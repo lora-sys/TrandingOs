@@ -114,6 +114,17 @@ export const tradingPiApi = {
     apiKeys?: Record<string, string>;
   }) =>
     rpc("/api/config", body),
+  /** Available model list + currently-selected model id */
+  configModels: () => rpc("/api/config/models") as Promise<{
+    models: Array<{
+      id: string;
+      name: string;
+      reasoning?: boolean;
+      contextWindow: number;
+      provider: string;
+    }>;
+    current: string;
+  }>,
   sendMessage: (message: string, sessionId?: string) => rpc("/api/session/message", { message, sessionId }),
   /** SSE streaming: returns an EventTarget that emits agent events + 'done' */
   sendMessageStream: (message: string, sessionId?: string, files?: File[]) => {
