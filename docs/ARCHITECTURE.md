@@ -12,7 +12,7 @@ User → Chat (ai-elements Conversation)
     → API Server (Node HTTP, apps/web/server/api.ts)
       → @trading-pi/core
         → TradingPiAgent (Pi Mono runtime)
-        → Skills (40+ registered)
+        → Skills (69 registered)
         → Workflows (9 DAGs)
         → SQLite (persistence)
         → Langfuse (telemetry)
@@ -42,7 +42,7 @@ Side panels:
 ### Backend (packages/core)
 - **Agent**: Single `TradingPiAgent` wrapping Pi Mono `@earendil-works/pi-agent-core@0.79.0`
 - **AI**: `@earendil-works/pi-ai@0.79.0`, OpenAI-compatible provider
-- **Skills**: 40+ registered in `default-skills.ts` (market, search, browser, risk, research, artifact, journal, memory, workspace, mcp, strategy, backtest, evolution, review, approval, airdrop, execution)
+- **Skills**: 69 registered in `default-skills.ts` (market, search, browser, risk, research, artifact, journal, memory, workspace, mcp, strategy, backtest, evolution, review, approval, airdrop, execution)
 - **Workflows**: 9 DAGs in `default-workflows.ts`
 - **Persistence**: SQLite (node:sqlite), JSONL sessions, file artifacts
 - **Telemetry**: Langfuse 3.38.20
@@ -189,7 +189,7 @@ All custom hooks live in `apps/web/src/hooks/`:
 
 | Component | File | Status | Description |
 |-----------|------|--------|-------------|
-| **AppLayout** | `components/AppLayout.tsx` | Active | Root layout: sidebar, content area, settings modal, session list, nav items, health indicator, subagent sidebar |
+| **AppLayout** | `components/AppLayout.tsx` | Active | Root layout: sidebar, content area, settings modal, session list, nav items, health indicator, sub-agent (workflow wrapper) sidebar |
 | **ChatWorkspace** | `components/ChatWorkspace.tsx` | Active (~520L) | Thin orchestrator. Delegates to useSSEStream, useRpcRouter, useModelPicker, useCommandBar. Renders JSX layout only. |
 | **ArtifactPanel** | `components/ArtifactPanel.tsx` | Active | Claude-style artifact sidebar |
 | **ExportMenu** | `components/ExportMenu.tsx` | Active | Dropdown menu using ExportService |
@@ -233,7 +233,7 @@ Store file: [`src/lib/settingsStore.ts`](../apps/web/src/lib/settingsStore.ts)
 | `currentSessionId` | `string \| null` | Memory only | Active session ID |
 | `currentModel` | `ModelInfo \| null` | Memory only | Selected model info (shared between picker + RPC) |
 | `subagents` | `SubagentStateMap` | Memory only | Subagent states (single source of truth) |
-| `selectedSubagentId` | `string \| null` | Memory only | Selected subagent for detail sidebar |
+| `selectedSubagentId` | `string \| null` | Memory only | Selected sub-agent (workflow wrapper) for detail sidebar |
 
 **Key change (v5.0)**: `currentModel`, `subagents`, `selectedSubagentId` added to eliminate state duplication between components.
 
@@ -313,7 +313,7 @@ Initialization sequence (runs once at startup):
 6. Initialize stores: `SessionStore`, `MemoryStore`, `ArtifactEngine`, `ApprovalEngine`
 7. `new SkillRegistry(repos)` → skill container
 8. `new WorkflowEngine(skills, repos, artifacts, approvals, memory)` → workflow engine
-9. `registerDefaultSkills(skills)` → register 40+ skills
+9. `registerDefaultSkills(skills)` → register 69 skills
 10. `registerDefaultWorkflows(workflows)` → register 9 workflows
 11. `new TradingPiAgent({ sessions, memory, skills, workflows, artifacts, approvals, repos, env })`
 
