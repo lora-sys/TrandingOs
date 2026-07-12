@@ -29,6 +29,7 @@ function testRuntime() {
     defaultExchange: "binance",
     exchangeFallbacks: ["okx", "bybit", "coinbase", "kraken"],
     tradingMode: "paper",
+    thinkingLevel: "medium",
   };
   const paths = ensureLocalPaths(resolveLocalPaths(env));
   const database = new TradingPiDatabase(paths.sqlitePath);

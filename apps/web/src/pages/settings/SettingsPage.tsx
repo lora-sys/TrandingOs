@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActivityIcon, DatabaseIcon, FlaskConicalIcon, PaletteIcon, PlusIcon, SettingsIcon, ShieldCheckIcon, SlidersHorizontalIcon, WalletCardsIcon } from "lucide-react";
+import { ActivityIcon, DatabaseIcon, FileTextIcon, FlaskConicalIcon, PaletteIcon, PlusIcon, SettingsIcon, ShieldCheckIcon, SlidersHorizontalIcon, WalletCardsIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { tradingPiApi } from "@/api/client";
 import type { ThemeMode } from "@/core/types";
@@ -11,6 +11,7 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const { data: config } = useQuery({ queryKey: ["config"], queryFn: () => tradingPiApi.config().catch(() => null) });
   const { data: rules } = useQuery({ queryKey: ["user-rules"], queryFn: () => tradingPiApi.userRules().catch(() => []) });
+  const { data: systemPrompt } = useQuery({ queryKey: ["system-prompt"], queryFn: () => fetch("/api/agent/system-prompt").then((r) => r.json()).catch(() => null) });
 
   // ── All settings state from global store (single source of truth) ──
   // Model / thinking / compaction — read from store, sync from backend config
@@ -159,8 +160,12 @@ export function SettingsPage() {
               <input className="w-full rounded-md border bg-background px-3 py-2 text-sm" onChange={(event) => setModelId(event.target.value)} value={modelId} />
             </Field>
             <Field label="Thinking">
-              <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" onChange={(event) => setThinkingLevel(event.target.value)} value={thinkingLevel}>
-                {["low", "medium", "high"].map((item) => <option key={item}>{item}</option>)}
+              <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" onChange={(event) => {
+                const value = event.target.value;
+                setThinkingLevel(value);
+                tradingPiApi.setConfig({ thinkingLevel: value }).catch(() => undefined);
+              }} value={thinkingLevel}>
+                {["off", "minimal", "low", "medium", "high", "xhigh"].map((item) => <option key={item}>{item}</option>)}
               </select>
             </Field>
             <Field label="Auto compaction">
@@ -224,6 +229,26 @@ export function SettingsPage() {
             </div>
           ) : null}
           {aiPing.error ? <p className="mt-3 text-xs text-red-300">{aiPing.error instanceof Error ? aiPing.error.message : String(aiPing.error)}</p> : null}
+        </Panel>
+
+        <Panel icon={FileTextIcon} title="System Prompt">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>Version: <span className="text-foreground">{String((systemPrompt as any)?.version ?? "loading")}</span></span>
+            <button
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-50"
+              disabled={!(systemPrompt as any)?.content}
+              onClick={() => {
+                const text = String((systemPrompt as any)?.content ?? "");
+                if (text && navigator.clipboard) navigator.clipboard.writeText(text).catch(() => undefined);
+              }}
+              type="button"
+            >
+              Copy
+            </button>
+          </div>
+          <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-md border bg-black/30 p-3 text-xs leading-relaxed text-foreground">
+            {String((systemPrompt as any)?.content ?? "Loading...")}
+          </pre>
         </Panel>
 
         <Panel icon={WalletCardsIcon} title="Trading">

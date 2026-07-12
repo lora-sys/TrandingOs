@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   Agent,
   type AgentEvent,
@@ -39,6 +42,16 @@ const THINKING_TOKEN_BUDGETS: Record<string, number> = {
 
 export class TradingPiAgent {
   private _compactionSummary: string | undefined;
+  private _systemPromptContent: string = "";
+  private _systemPromptVersion: string = "fallback";
+  private static readonly FALLBACK_SYSTEM_PROMPT = `You are Trading Pi Agent, the only core agent in a local-first personal trading OS.
+Use available tools, workflows, and workflow-backed sub-agents for market, research, review, paper-trade, and approval work.
+Trading Pi Agent remains the only user-facing main agent; sub-agents are execution/progress wrappers around known workflows, not independent autonomous agents.
+Never place or prepare real orders without approval.
+Make important results traceable and artifact-ready.
+Do not claim a market source, tool, workflow, or integration is online unless it succeeded in the current run or appears in observed tool results.
+If a source was not checked, say it is available as a capability, not online.
+If a source failed or was blocked, surface that plainly.`;
 
   constructor(
     private readonly deps: {
@@ -51,7 +64,30 @@ export class TradingPiAgent {
       artifacts: ArtifactEngine;
       approvals: ApprovalEngine;
     },
-  ) {}
+  ) {
+    this.loadSystemPrompt();
+  }
+
+  private loadSystemPrompt() {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const file = resolve(here, "system-prompt.md");
+    if (!existsSync(file)) {
+      console.warn(`[trading-pi-agent] system-prompt.md not found; using fallback`);
+      this._systemPromptContent = TradingPiAgent.FALLBACK_SYSTEM_PROMPT;
+      return;
+    }
+    const raw = readFileSync(file, "utf8");
+    const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    if (fmMatch) {
+      const content = fmMatch[2] ?? "";
+      const v = fmMatch[1]?.match(/version:\s*([^\s\n]+)/);
+      if (v?.[1]) this._systemPromptVersion = v[1];
+      this._systemPromptContent = content.trim();
+    } else {
+      this._systemPromptContent = raw.trim();
+      this._systemPromptVersion = "0.1.0";
+    }
+  }
 
   async prompt(
     input: { message: string; sessionId?: string; parentSessionId?: string; name?: string },
@@ -76,7 +112,7 @@ export class TradingPiAgent {
     if (routed) {
       return routed;
     }
-    const agentSystemPrompt = this.systemPrompt();
+    const agentSystemPrompt = this._systemPromptContent;
     const agentTools = this.deps.skills.toPiTools(baseContext);
     // Resolve model: runtime override > env default
     const effectiveModelId = options?.modelId || this.deps.env.openaiModel;
@@ -84,7 +120,7 @@ export class TradingPiAgent {
       ? { ...this.deps.env, openaiModel: effectiveModelId }
       : this.deps.env;
     // Resolve thinking budget from level string
-    const thinkingLevel = options?.thinkingLevel || "medium";
+    const thinkingLevel = options?.thinkingLevel || this.deps.env.thinkingLevel;
     const thinkingTokens = THINKING_TOKEN_BUDGETS[thinkingLevel] ?? THINKING_TOKEN_BUDGETS.medium;
     const agent = new Agent({
       sessionId: session.id,
@@ -218,17 +254,6 @@ export class TradingPiAgent {
       messages,
       text: extractAssistantText(last),
     };
-  }
-
-  private systemPrompt() {
-    return `You are Trading Pi Agent, the only core agent in a local-first personal trading OS.
-Use available tools, workflows, and workflow-backed sub-agents for market, research, review, paper-trade, and approval work.
-Trading Pi Agent remains the only user-facing main agent; sub-agents are execution/progress wrappers around known workflows, not independent autonomous agents.
-Never place or prepare real orders without approval.
-Make important results traceable and artifact-ready.
-Do not claim a market source, tool, workflow, or integration is online unless it succeeded in the current run or appears in observed tool results.
-If a source was not checked, say it is available as a capability, not online.
-If a source failed or was blocked, surface that plainly.`;
   }
 
   private async routeSlashCommand(
