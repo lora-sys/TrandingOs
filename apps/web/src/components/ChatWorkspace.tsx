@@ -24,10 +24,13 @@ import {
   PromptInput,
   PromptInputBody,
   PromptInputFooter,
+  PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputController,
 } from "@/components/ai-elements/prompt-input";
+import { SlashCommandMenu } from "@/components/slash-command-menu";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   ChatItemView,
@@ -310,6 +313,7 @@ export function ChatWorkspace() {
                     icon={<TerminalIcon className="size-7" />}
                     title="Trading Pi"
                   />
+                  <div className="text-muted-foreground text-xs">Type / for commands</div>
                   <div className="grid grid-cols-2 gap-3 w-full max-w-md">
                     {[
                       { label: "市场分析", prompt: "分析当前市场行情和趋势", icon: BarChart3Icon },
@@ -427,27 +431,14 @@ export function ChatWorkspace() {
                   Artifacts
                 </button>
               </div>
-              <PromptInput
-                accept="image/*"
-                className="rounded-xl border bg-card/70 backdrop-blur-xl border-white/[0.08] shadow-sm"
-                globalDrop={true}
-                multiple
-                onSubmit={submitMessage}
-              >
-                <PromptAttachmentPreview />
-                <PromptInputBody>
-                  <PromptInputTextarea className="min-h-20 resize-none font-[family-name:var(--font-mono)]" placeholder="输入交易指令..." />
-                </PromptInputBody>
-                <PromptInputFooter>
-                  <PromptInputTools>
-                    <PromptAttachmentButton />
-                    <div className="hidden items-center gap-1 px-2 text-muted-foreground text-xs sm:flex">
-                      Enter sends, Shift+Enter inserts a newline
-                    </div>
-                  </PromptInputTools>
-                  <PromptInputSubmit onStop={() => { stream.abort(); addSystemMessage("Aborted by user", "error"); }} status={stream.status} />
-                </PromptInputFooter>
-              </PromptInput>
+              <PromptInputProvider>
+                <PromptInputWithSlashMenu
+                  className="rounded-xl border bg-card/70 backdrop-blur-xl border-white/[0.08] shadow-sm"
+                  onStop={() => { stream.abort(); addSystemMessage("Aborted by user", "error"); }}
+                  onSubmit={submitMessage}
+                  status={stream.status}
+                />
+              </PromptInputProvider>
             </div>
           </footer>
         ) : (
@@ -500,5 +491,62 @@ export function ChatWorkspace() {
       )}
     </div>
     </TooltipProvider>
+  );
+}
+
+/**
+ * PromptInputWithSlashMenu — wraps the ai-elements PromptInput with the
+ * autocomplete slash command menu. Lives inside a PromptInputProvider so it
+ * can read and write the controlled text input value.
+ */
+function PromptInputWithSlashMenu({
+  className,
+  onSubmit,
+  onStop,
+  status,
+}: {
+  className?: string;
+  onSubmit: (message: { text: string; files: unknown[] }) => void | Promise<void>;
+  onStop: () => void;
+  status: ChatSubmitStatus;
+}) {
+  const controller = usePromptInputController();
+  const inputValue = controller.textInput.value;
+  const setInput = controller.textInput.setInput;
+
+  return (
+    <div className="relative">
+      <SlashCommandMenu
+        inputValue={inputValue}
+        onSelect={(example) => {
+          // Empty string = close (Esc). Otherwise replace input with example.
+          setInput(example);
+        }}
+      />
+      <PromptInput
+        accept="image/*"
+        className={className}
+        globalDrop={true}
+        multiple
+        onSubmit={({ text, files }) => onSubmit({ text, files })}
+      >
+        <PromptAttachmentPreview />
+        <PromptInputBody>
+          <PromptInputTextarea
+            className="min-h-20 resize-none font-[family-name:var(--font-mono)]"
+            placeholder="输入交易指令... (输入 / 唤起命令菜单)"
+          />
+        </PromptInputBody>
+        <PromptInputFooter>
+          <PromptInputTools>
+            <PromptAttachmentButton />
+            <div className="hidden items-center gap-1 px-2 text-muted-foreground text-xs sm:flex">
+              Enter sends, Shift+Enter inserts a newline
+            </div>
+          </PromptInputTools>
+          <PromptInputSubmit onStop={onStop} status={status} />
+        </PromptInputFooter>
+      </PromptInput>
+    </div>
   );
 }
