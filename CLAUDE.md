@@ -64,6 +64,9 @@ npm run build       # Build all packages
 playwright-cli open http://localhost:5173/   # E2E browser testing
 ```
 
+- PRs require CI green (vitest + tsc + build) before merge
+- See .github/PULL_REQUEST_TEMPLATE.md for PR format
+
 ## Key Decisions
 
 - **Single Agent Architecture** — Only TradingPiAgent, no multi-agent
