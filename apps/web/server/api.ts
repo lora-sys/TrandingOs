@@ -1163,6 +1163,25 @@ const server = createServer(async (req, res) => {
       const updated = repos.updateEvolutionSuggestionStatus(suggestion.id, "dismissed");
       return sendJson(res, { suggestion: updated });
     }
+    const applySuggestionMatch = url.pathname.match(/^\/api\/evolution\/suggestions\/([^/]+)\/apply$/);
+    if (applySuggestionMatch && req.method === "POST") {
+      const body = await readBody(req);
+      const suggestionId = decodeURIComponent(applySuggestionMatch[1]!);
+      const suggestion = repos.getEvolutionSuggestion(suggestionId);
+      if (!suggestion) return sendJson(res, { error: "Suggestion not found" }, 404);
+      if (suggestion.status !== "proposed") {
+        return sendJson(res, { error: `Suggestion already ${suggestion.status}`, suggestionId, status: suggestion.status }, 409);
+      }
+      const approvedByUser = body.approvedByUser !== false;
+      const finalRuleText = typeof body.finalRuleText === "string" && body.finalRuleText.trim().length > 0 ? body.finalRuleText.trim() : undefined;
+      const session = sessions.ensureSession(body.sessionId);
+      const result = await workflows.run(
+        "evolution.apply",
+        { suggestionId, approvedByUser, finalRuleText },
+        { env, repos, artifacts, approvals, memory, skills, sessionId: session.id },
+      );
+      return sendJson(res, { sessionId: session.id, ...result.output });
+    }
     if (url.pathname === "/api/user-rules" && req.method === "GET") {
       const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
       const rules = (memory.query({ domain: "user_rules", limit: 100 }) as Array<{ workspace_id?: string | null }>).filter(

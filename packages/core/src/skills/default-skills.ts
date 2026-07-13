@@ -1860,6 +1860,65 @@ ${normalized.notes}
   });
 
   registry.register({
+    id: "evolution.apply",
+    name: "Evolution Apply",
+    description: "Adopt or reject an evolution suggestion. On approve, writes the rule into user_rules memory; on reject, records the decision only.",
+    riskLevel: "medium",
+    permission: "write",
+    parameters: Type.Object({
+      suggestionId: Type.String(),
+      approvedByUser: Type.Boolean(),
+      finalRuleText: Type.Optional(Type.String()),
+    }),
+    execute: async (input, context) => {
+      const suggestion = context.repos.getEvolutionSuggestion(input.suggestionId);
+      if (!suggestion) {
+        throw new Error(`Evolution suggestion not found: ${input.suggestionId}`);
+      }
+      if (suggestion.status !== "proposed") {
+        throw new Error(`Evolution suggestion already ${suggestion.status}: ${input.suggestionId}`);
+      }
+      if (!input.approvedByUser) {
+        const updated = context.repos.updateEvolutionSuggestionStatus(input.suggestionId, "dismissed");
+        context.repos.createTimeline({
+          sessionId: context.sessionId,
+          workflowRunId: context.workflowRunId,
+          type: "evolution.suggestion.rejected",
+          title: `Evolution suggestion rejected: ${suggestion.title}`,
+          status: "completed",
+          payload: { suggestionId: input.suggestionId, title: suggestion.title },
+        });
+        return { ok: true, suggestionId: input.suggestionId, suggestion: updated, rejected: true };
+      }
+      const ruleText = (input.finalRuleText ?? suggestion.ruleText ?? suggestion.description ?? "").trim();
+      if (!ruleText) {
+        throw new Error(`Evolution suggestion has no rule text to adopt: ${input.suggestionId}`);
+      }
+      const ruleKey = `rule:${input.suggestionId}`;
+      context.memory.write({
+        domain: "user_rules",
+        workspaceId: suggestion.workspaceId,
+        key: ruleKey,
+        value: ruleText,
+        sourceType: "evolution",
+        sourceId: input.suggestionId,
+        importance: 0.85,
+        metadata: { adoptedFrom: "evolution.apply", title: suggestion.title, category: suggestion.category },
+      });
+      const updated = context.repos.updateEvolutionSuggestionStatus(input.suggestionId, "adopted");
+      context.repos.createTimeline({
+        sessionId: context.sessionId,
+        workflowRunId: context.workflowRunId,
+        type: "evolution.suggestion.adopted",
+        title: `Evolution suggestion adopted: ${suggestion.title}`,
+        status: "completed",
+        payload: { suggestionId: input.suggestionId, ruleId: ruleKey, title: suggestion.title },
+      });
+      return { ok: true, suggestionId: input.suggestionId, ruleId: ruleKey, suggestion: updated };
+    },
+  });
+
+  registry.register({
     id: "review.daily",
     name: "Daily Review Metrics",
     description: "Calculate local daily review metrics from paper trades and journal entries.",

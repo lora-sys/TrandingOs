@@ -656,6 +656,17 @@ ${JSON.stringify(backtest.result.equityCurve, null, 2)}
     riskLevel: "medium",
     execute: async (input: { strategyId?: string; focus?: string }, context) => runSkill(context, "evolution.propose", input),
   });
+
+  engine.register({
+    id: "evolution.apply",
+    name: "Evolution Apply",
+    description: "Adopt or reject an evolution suggestion. On approve, writes the rule into user_rules memory; on reject, records the decision only.",
+    riskLevel: "medium",
+    execute: async (
+      input: { suggestionId: string; approvedByUser: boolean; finalRuleText?: string },
+      context,
+    ) => runSkill(context, "evolution.apply", input),
+  });
 }
 
 function buildWorkspaceReviewReport(input: {
