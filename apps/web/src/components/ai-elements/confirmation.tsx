@@ -38,6 +38,8 @@ type ToolUIPartApproval =
 interface ConfirmationContextValue {
   approval: ToolUIPartApproval;
   state: ToolUIPart["state"];
+  onApprove?: () => void;
+  onDeny?: () => void;
 }
 
 const ConfirmationContext = createContext<ConfirmationContextValue | null>(
@@ -57,15 +59,27 @@ const useConfirmation = () => {
 export type ConfirmationProps = ComponentProps<typeof Alert> & {
   approval?: ToolUIPartApproval;
   state: ToolUIPart["state"];
+  /**
+   * Optional local handlers invoked from the default Approve/Deny buttons
+   * rendered inside ConfirmationActions. When omitted, the default
+   * ConfirmationAction slots must be supplied by the caller.
+   */
+  onApprove?: () => void;
+  onDeny?: () => void;
 };
 
 export const Confirmation = ({
   className,
   approval,
   state,
+  onApprove,
+  onDeny,
   ...props
 }: ConfirmationProps) => {
-  const contextValue = useMemo(() => ({ approval, state }), [approval, state]);
+  const contextValue = useMemo(
+    () => ({ approval, state, onApprove, onDeny }),
+    [approval, state, onApprove, onDeny],
+  );
 
   if (!approval || state === "input-streaming" || state === "input-available") {
     return null;
@@ -146,24 +160,49 @@ export const ConfirmationRejected = ({
   return children;
 };
 
-export type ConfirmationActionsProps = ComponentProps<"div">;
+export type ConfirmationActionsProps = ComponentProps<"div"> & {
+  /**
+   * When provided alongside the parent's onApprove/onDeny, render default
+   * Approve/Deny buttons automatically. Caller-provided children still win
+   * for full custom layouts.
+   */
+  showDefaults?: boolean;
+};
 
 export const ConfirmationActions = ({
   className,
+  showDefaults,
+  children,
   ...props
 }: ConfirmationActionsProps) => {
-  const { state } = useConfirmation();
+  const { state, onApprove, onDeny } = useConfirmation();
 
   // Only show when approval is requested
   if (state !== "approval-requested") {
     return null;
   }
 
+  const renderDefaults = showDefaults && (onApprove || onDeny);
+
   return (
     <div
       className={cn("flex items-center justify-end gap-2 self-end", className)}
       {...props}
-    />
+    >
+      {children}
+      {renderDefaults ? (
+        <>
+          {onDeny ? (
+            <ConfirmationAction onClick={onDeny} variant="outline">
+              Deny
+            </ConfirmationAction>
+          ) : null}
+          {onApprove ? (
+            <ConfirmationAction onClick={onApprove}>Approve</ConfirmationAction>
+          ) : null}
+        </>
+      ) : null}
+    </div>
   );
 };
 

@@ -186,6 +186,13 @@ If a source failed or was blocked, surface that plainly.`;
             payload: args,
             sessionId: session.id,
           });
+          this.deps.repos.createTimeline({
+            sessionId: session.id,
+            type: "agent.approval.requested",
+            title: `Approval required: ${skill.name}`,
+            status: "blocked",
+            payload: { approvalId, skillId: skill.id, riskLevel: skill.riskLevel, args },
+          });
           return { block: true, reason: `Approval required before running ${skill.id}: ${approvalId}` };
         }
         return undefined;
