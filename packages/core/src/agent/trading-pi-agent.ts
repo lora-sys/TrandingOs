@@ -41,7 +41,7 @@ const THINKING_TOKEN_BUDGETS: Record<string, number> = {
 };
 
 export class TradingPiAgent {
-  private _compactionSummary: string | undefined;
+  private readonly _compactionSummaries = new Map<string, string>();
   private _systemPromptContent: string = "";
   private _systemPromptVersion: string = "fallback";
   private static readonly FALLBACK_SYSTEM_PROMPT = `You are Trading Pi Agent, the only core agent in a local-first personal trading OS.
@@ -138,13 +138,13 @@ If a source failed or was blocked, surface that plainly.`;
       getApiKey: () => this.deps.env.openaiApiKey,
       transformContext: async (messages) => {
         const contextMessages: AgentMessage[] = [];
-        if (this._compactionSummary) {
+        const compactionSummary = this._compactionSummaries.get(session.id);
+        if (compactionSummary) {
           contextMessages.push({
             role: "user",
-            content: `--- Previous conversation summary ---\n${this._compactionSummary}`,
+            content: `--- Previous conversation summary ---\n${compactionSummary}`,
             timestamp: Date.now(),
           });
-          this._compactionSummary = undefined;
         }
         contextMessages.push({
           role: "user",
@@ -231,7 +231,7 @@ If a source failed or was blocked, surface that plainly.`;
             this.deps.env.openaiApiKey ?? "",
           );
           if (summaryResult.ok) {
-            this._compactionSummary = summaryResult.value;
+            this._compactionSummaries.set(session.id, summaryResult.value);
             this.deps.repos.createTimeline({
               sessionId: session.id,
               type: "agent.compaction.complete",
@@ -306,6 +306,11 @@ If a source failed or was blocked, surface that plainly.`;
     if (event.type === "message_end" && event.message.role === "assistant") {
       this.deps.sessions.append(sessionId, "pi_message", event.message);
     }
+  }
+
+  /** Remove the compaction summary for a session (e.g. after close). */
+  clearCompactionSummary(sessionId: string) {
+    this._compactionSummaries.delete(sessionId);
   }
 }
 
