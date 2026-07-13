@@ -515,27 +515,90 @@ Return sections: Scorecard, What Worked, Rule Breaks, Risk Notes, Tomorrow Focus
 
   engine.register({
     id: "strategy.backtest",
-    name: "Strategy Backtest Bridge",
-    description: "Create a strategy record, run sandbox backtest bridge, and generate a report artifact.",
+    name: "Strategy Backtest",
+    description: "Create a strategy record, run a real SMA-crossover backtest over historical candles, and generate a report artifact.",
     riskLevel: "medium",
-    execute: async (input: { name: string; symbol: string; timeframe?: string; parameters?: unknown }, context) => {
+    execute: async (
+      input: {
+        name: string;
+        symbol: string;
+        timeframe?: string;
+        exchange?: string;
+        startDate?: string;
+        endDate?: string;
+        initialCapitalUsd?: number;
+        parameters?: unknown;
+        strategy?: { fastPeriod?: number; slowPeriod?: number; stopLossPct?: number; takeProfitPct?: number; feePct?: number };
+      },
+      context,
+    ) => {
       const strategy = await runSkill<{ strategyId: string; score: number }>(context, "strategy.create", {
         name: input.name,
-        parameters: input.parameters ?? {},
+        parameters: { ...(input.parameters as Record<string, unknown> | undefined), strategy: input.strategy ?? {} },
         status: "testing",
       });
-      const backtest = await runSkill(context, "backtest.run", {
+      const backtest = await runSkill<{
+        backtestId: string;
+        metrics: Record<string, unknown>;
+        result: {
+          totalTrades: number;
+          winningTrades: number;
+          losingTrades: number;
+          winRate: number;
+          totalReturnPct: number;
+          maxDrawdownPct: number;
+          sharpeRatio: number;
+          trades: unknown[];
+          equityCurve: unknown[];
+          warnings: string[];
+        };
+      }>(context, "backtest.run", {
         strategyId: strategy.strategyId,
+        name: input.name,
         symbol: input.symbol,
         timeframe: input.timeframe,
+        exchange: input.exchange,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        initialCapitalUsd: input.initialCapitalUsd,
+        strategy: input.strategy,
       });
       const artifact = await runSkill<{ id: string; path: string }>(context, "artifact.create", {
         type: "backtest-report",
         title: `Backtest Report ${input.name}`,
-        summary: `Sandbox backtest bridge report for ${input.name}.`,
-        markdown: `# Backtest Report ${input.name}\n\n\`\`\`json\n${JSON.stringify({ strategy, backtest }, null, 2)}\n\`\`\`\n`,
+        summary: `Backtest for ${input.name} on ${input.symbol}: ${backtest.result.totalTrades} trades, return ${backtest.result.totalReturnPct.toFixed(2)}%, max DD ${backtest.result.maxDrawdownPct.toFixed(2)}%.`,
+        markdown: `# Backtest Report ${input.name}
+
+- Symbol: ${input.symbol}
+- Timeframe: ${input.timeframe ?? "1h"}
+- Trades: ${backtest.result.totalTrades} (wins: ${backtest.result.winningTrades}, losses: ${backtest.result.losingTrades})
+- Win rate: ${(backtest.result.winRate * 100).toFixed(2)}%
+- Total return: ${backtest.result.totalReturnPct.toFixed(2)}%
+- Max drawdown: ${backtest.result.maxDrawdownPct.toFixed(2)}%
+- Sharpe ratio: ${backtest.result.sharpeRatio.toFixed(3)}
+- Warnings: ${backtest.result.warnings.length ? backtest.result.warnings.join("; ") : "none"}
+
+## Strategy
+
+\`\`\`json
+${JSON.stringify(input.strategy ?? input.parameters ?? {}, null, 2)}
+\`\`\`
+
+## Trades
+
+\`\`\`json
+${JSON.stringify(backtest.result.trades.slice(0, 20), null, 2)}
+\`\`\`
+
+## Equity Curve
+
+\`\`\`json
+${JSON.stringify(backtest.result.equityCurve, null, 2)}
+\`\`\`
+`,
+        payload: { strategy, backtest: backtest.result },
       });
-      return { strategy, backtest, artifact };
+      return { strategy, backtest: backtest.result, backtestId: backtest.backtestId, artifact };
     },
   });
 

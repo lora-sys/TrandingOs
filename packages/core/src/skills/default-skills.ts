@@ -29,6 +29,7 @@ import {
   searchFred,
 } from "../events/event-feeds.js";
 import { fetchCcxtOhlcv, fetchCcxtTicker } from "../market/ccxt.js";
+import { runBacktest, type BacktestInput, type BacktestResult, type BacktestCandle } from "../market/backtest.js";
 import { fetchCoinGeckoQuote } from "../market/coingecko.js";
 import { checkXueqiuHealth, getHotPosts, getHotStocks, getStockQuote, searchStock } from "../reach/xueqiu.js";
 import { runDoctor } from "../reach/doctor.js";
@@ -1683,19 +1684,117 @@ ${normalized.notes}
   registry.register({
     id: "backtest.run",
     name: "Run Backtest",
-    description: "Create a sandbox backtest record linking Strategy Engine and Evolution Engine.",
+    description: "Run a real SMA-crossover backtest over historical candles and persist the metrics.",
     riskLevel: "medium",
     permission: "write",
     parameters: Type.Object({
       strategyId: Type.Optional(Type.String()),
+      name: Type.Optional(Type.String()),
       symbol: Type.String(),
       timeframe: Type.Optional(Type.String()),
+      exchange: Type.Optional(Type.String()),
+      startDate: Type.Optional(Type.String()),
+      endDate: Type.Optional(Type.String()),
+      initialCapitalUsd: Type.Optional(Type.Number()),
+      strategy: Type.Optional(
+        Type.Object({
+          fastPeriod: Type.Optional(Type.Number()),
+          slowPeriod: Type.Optional(Type.Number()),
+          stopLossPct: Type.Optional(Type.Number()),
+          takeProfitPct: Type.Optional(Type.Number()),
+          feePct: Type.Optional(Type.Number()),
+        }),
+      ),
     }),
     execute: async (input, context) => {
-      const metrics = { symbol: input.symbol, timeframe: input.timeframe ?? "1h", mode: "sandbox", note: "Backtest bridge foundation record." };
-      const backtestId = context.repos.createBacktest({ strategyId: input.strategyId, status: "completed", metrics });
-      context.repos.createAuditRecord({ category: "backtest", action: "backtest.run", status: "completed", payload: { backtestId, metrics } });
-      return { backtestId, metrics };
+      const exchange = input.exchange ?? context.env.defaultExchange;
+      const timeframe = input.timeframe ?? "1h";
+      const startDate = input.startDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const endDate = input.endDate ?? new Date().toISOString();
+      const fastPeriod = input.strategy?.fastPeriod ?? 10;
+      const slowPeriod = input.strategy?.slowPeriod ?? 30;
+
+      const fetchCandles = async (
+        symbol: string,
+        tf: string,
+        start: string,
+        end: string,
+      ): Promise<BacktestCandle[]> => {
+        const startMs = new Date(start).getTime();
+        const endMs = new Date(end).getTime();
+        const stepMs = timeframeToMs(tf);
+        const requested = Math.max(slowPeriod * 4, 200);
+        const ccxtResult = await fetchCcxtOhlcv(exchange, symbol, tf, requested);
+        return ccxtResult.rows
+          .map((r: { timestamp: number; open: number; high: number; low: number; close: number; volume: number }) => ({
+            time: r.timestamp,
+            open: r.open,
+            high: r.high,
+            low: r.low,
+            close: r.close,
+            volume: r.volume,
+          }))
+          .filter((c) => c.time >= startMs && c.time <= endMs);
+      };
+
+      const backtestInput: BacktestInput = {
+        name: input.name ?? "SMA Crossover",
+        symbol: input.symbol,
+        timeframe,
+        startDate,
+        endDate,
+        initialCapitalUsd: input.initialCapitalUsd ?? 10000,
+        strategy: {
+          fastPeriod,
+          slowPeriod,
+          stopLossPct: input.strategy?.stopLossPct,
+          takeProfitPct: input.strategy?.takeProfitPct,
+          feePct: input.strategy?.feePct,
+        },
+      };
+
+      let result: BacktestResult;
+      try {
+        result = await runBacktest(backtestInput, fetchCandles);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result = {
+          totalTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
+          winRate: 0,
+          totalReturnPct: 0,
+          maxDrawdownPct: 0,
+          sharpeRatio: 0,
+          trades: [],
+          equityCurve: [],
+          warnings: [`Backtest failed: ${message}`],
+        };
+      }
+
+      const metrics = {
+        symbol: input.symbol,
+        timeframe,
+        exchange,
+        totalTrades: result.totalTrades,
+        winRate: result.winRate,
+        totalReturnPct: result.totalReturnPct,
+        maxDrawdownPct: result.maxDrawdownPct,
+        sharpeRatio: result.sharpeRatio,
+        warnings: result.warnings,
+      };
+      const backtestId = context.repos.createBacktest({
+        strategyId: input.strategyId,
+        status: result.warnings.some((w) => w.startsWith("Backtest failed")) ? "failed" : "completed",
+        metrics,
+      });
+      context.repos.createAuditRecord({
+        category: "backtest",
+        action: "backtest.run",
+        status: metrics.warnings?.length ? "completed" : "completed",
+        payload: { backtestId, metrics },
+      });
+      return { backtestId, metrics, result };
     },
   });
 
@@ -2281,6 +2380,26 @@ async function fetchDefiLlamaPrice(symbol: string) {
 
 function settledValue(result: PromiseSettledResult<unknown>) {
   return result.status === "fulfilled" ? result.value : { error: result.reason instanceof Error ? result.reason.message : String(result.reason) };
+}
+
+function timeframeToMs(timeframe: string): number {
+  const match = timeframe.match(/^(\d+)([mhdwM])$/);
+  if (!match) return 60 * 60 * 1000;
+  const n = Number(match[1]);
+  switch (match[2]) {
+    case "m":
+      return n * 60 * 1000;
+    case "h":
+      return n * 60 * 60 * 1000;
+    case "d":
+      return n * 24 * 60 * 60 * 1000;
+    case "w":
+      return n * 7 * 24 * 60 * 60 * 1000;
+    case "M":
+      return n * 30 * 24 * 60 * 60 * 1000;
+    default:
+      return 60 * 60 * 1000;
+  }
 }
 
 function decisionPrompt(topic: string, observedContext: unknown) {
