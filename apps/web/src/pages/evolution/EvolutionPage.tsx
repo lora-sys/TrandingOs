@@ -63,6 +63,15 @@ export function EvolutionPage() {
       queryClient.invalidateQueries({ queryKey: ["evolution-summary"] });
     },
   });
+  const apply = useMutation({
+    mutationFn: (input: { id: string; approvedByUser: boolean; finalRuleText?: string }) =>
+      tradingPiApi.applyEvolutionSuggestion(input.id, { approvedByUser: input.approvedByUser, finalRuleText: input.finalRuleText }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["evolution-suggestions"] });
+      queryClient.invalidateQueries({ queryKey: ["user-rules"] });
+      queryClient.invalidateQueries({ queryKey: ["evolution-summary"] });
+    },
+  });
   const runReview = useMutation({
     mutationFn: () => tradingPiApi.runWorkflow("review.workspace", { workspaceId: charts.bestWorkspaceId }),
     onSuccess: () => {
@@ -140,6 +149,16 @@ export function EvolutionPage() {
                         <XIcon className="size-3" />
                         {item.status === "dismissed" ? "Dismissed" : "Dismiss"}
                       </button>
+                      {item.status === "proposed" && (
+                        <>
+                          <button className="inline-flex items-center gap-1 rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-xs text-cyan-200 disabled:opacity-50" disabled={apply.isPending} onClick={() => apply.mutate({ id: item.id, approvedByUser: true })} type="button" title="Adopt via evolution.apply workflow">
+                            Apply
+                          </button>
+                          <button className="inline-flex items-center gap-1 rounded-md border border-rose-400/25 px-2 py-1 text-xs text-rose-200 disabled:opacity-50" disabled={apply.isPending} onClick={() => apply.mutate({ id: item.id, approvedByUser: false })} type="button" title="Reject via evolution.apply workflow">
+                            Reject
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </motion.article>
