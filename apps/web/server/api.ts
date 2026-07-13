@@ -392,9 +392,19 @@ const server = createServer(async (req, res) => {
 	    if (url.pathname === "/api/config" && req.method === "GET") {
 	      return sendJson(res, publicAgentConfig());
 	    }
-	    if (url.pathname === "/api/config" && req.method === "POST") {
+	    if (url.pathname === "/api/agent/system-prompt" && req.method === "GET") {
+		      return sendJson(res, {
+		        content: agent._systemPromptContent ?? "",
+		        version: agent._systemPromptVersion ?? "fallback",
+		        thinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh"],
+		      });
+		    }
+		    if (url.pathname === "/api/config" && (req.method === "POST" || req.method === "PUT")) {
 	      const body = await readBody(req);
-	      if (body.thinkingLevel !== undefined) agentConfig.thinkingLevel = String(body.thinkingLevel);
+	      if (body.thinkingLevel !== undefined) {
+		        agentConfig.thinkingLevel = String(body.thinkingLevel);
+	        env.thinkingLevel = String(body.thinkingLevel);
+	      }
 	      if (body.modelId !== undefined) agentConfig.modelId = String(body.modelId);
 	      if (body.autoCompaction !== undefined) agentConfig.autoCompaction = Boolean(body.autoCompaction);
 	      if (body.showThinking !== undefined) agentConfig.showThinking = Boolean(body.showThinking);
