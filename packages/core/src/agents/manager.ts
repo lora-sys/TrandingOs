@@ -115,7 +115,7 @@ export class SubAgentManager {
     if (!definition) throw new Error(`Unknown sub-agent type: ${params.agent_type}`);
     const isBackground = params.background ?? definition.defaultMode === "background";
     if (isBackground && !definition.backgroundCapable) throw new Error(`${definition.name} does not support background mode.`);
-    const session = this.createSession(params, definition, isBackground);
+    const session = this.createSession(params, definition, isBackground, context);
     this.publish(session, emitCreated(session));
     const execution = this.execute(session, definition, params, context);
     if (isBackground) {
@@ -147,7 +147,7 @@ export class SubAgentManager {
     return session ? this.toStatus(session) : undefined;
   }
 
-  private createSession(params: SpawnParams, definition: AgentDefinition, isBackground: boolean): SubAgentSession {
+  private createSession(params: SpawnParams, definition: AgentDefinition, isBackground: boolean, context?: WorkflowContext): SubAgentSession {
     const id = `sag_${randomUUID()}`;
     const session: SubAgentSession = {
       id,
@@ -159,6 +159,7 @@ export class SubAgentManager {
       isBackground,
       workspaceId: params.workspace_id,
       decisionId: params.decision_id,
+      sessionId: context?.sessionId,
       workflowId: definition.workflowId,
       toolUses: 0,
       events: [],

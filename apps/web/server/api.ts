@@ -13,6 +13,7 @@ import { runDeepResearch } from "@trading-pi/core";
 import { getDefaultSubAgentManager } from "@trading-pi/core";
 import { aiPing } from "@trading-pi/core";
 import { classifyError, sendErrorEvent, type AgentErrorCategory } from "./error-classify.js";
+import type { SubAgentEvent } from "@trading-pi/core";
 
 const env = loadEnv();
 const paths = ensureLocalPaths(resolveLocalPaths(env));
@@ -507,9 +508,11 @@ const server = createServer(async (req, res) => {
       res.flushHeaders();
 
       agentStatus = "running";
-      const unsubscribeSubAgents = subAgents.subscribe((event) => {
+      const unsubscribeSubAgents = subAgents.subscribe((event: SubAgentEvent) => {
         try {
-          res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+          if (event.payload.sessionId && event.payload.sessionId === sessionId) {
+            res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+          }
         } catch { /* client may have disconnected */ }
       });
       try {

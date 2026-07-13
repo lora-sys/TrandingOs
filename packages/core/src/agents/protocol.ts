@@ -7,6 +7,7 @@ export function subAgentEvent(type: SubAgentLifecycleEventType, payload: Record<
 export function emitCreated(session: SubAgentSession) {
   return subAgentEvent("subagents:created", {
     id: session.id,
+    sessionId: session.sessionId,
     type: session.type,
     agentType: session.agentType,
     description: session.description,
@@ -19,6 +20,7 @@ export function emitCreated(session: SubAgentSession) {
 export function emitStarted(session: SubAgentSession) {
   return subAgentEvent("subagents:started", {
     id: session.id,
+    sessionId: session.sessionId,
     type: session.type,
     agentType: session.agentType,
     description: session.description,
@@ -30,6 +32,7 @@ export function emitStarted(session: SubAgentSession) {
 export function emitStep(session: SubAgentSession, input: { stepName: string; stepNumber: number; totalSteps: number; detail?: string }) {
   return subAgentEvent("subagents:step", {
     id: session.id,
+    sessionId: session.sessionId,
     type: session.type,
     agentType: session.agentType,
     description: session.description,
@@ -44,6 +47,7 @@ export function emitStep(session: SubAgentSession, input: { stepName: string; st
 export function emitCompleted(session: SubAgentSession) {
   return subAgentEvent("subagents:completed", {
     id: session.id,
+    sessionId: session.sessionId,
     type: session.type,
     agentType: session.agentType,
     description: session.description,
@@ -59,6 +63,7 @@ export function emitCompleted(session: SubAgentSession) {
 export function emitFailed(session: SubAgentSession) {
   return subAgentEvent("subagents:failed", {
     id: session.id,
+    sessionId: session.sessionId,
     type: session.type,
     agentType: session.agentType,
     description: session.description,
@@ -71,6 +76,7 @@ export function emitFailed(session: SubAgentSession) {
 export function emitCancelled(session: SubAgentSession, reason = "cancelled") {
   return subAgentEvent("subagents:cancelled", {
     id: session.id,
+    sessionId: session.sessionId,
     type: session.type,
     agentType: session.agentType,
     description: session.description,
