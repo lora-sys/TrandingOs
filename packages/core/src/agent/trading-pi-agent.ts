@@ -204,56 +204,60 @@ If a source failed or was blocked, surface that plainly.`;
     agent.state.messages = sessionEntriesToAgentMessages(
       this.deps.sessions.read(session.id).filter((entry) => entry.id !== userEntry.id),
     );
-    agent.subscribe((event: AgentEvent) => {
+    const unsubscribe = agent.subscribe((event: AgentEvent) => {
       this.handleEvent(session.id, event);
       onStreamEvent?.(event);
     });
-    await agent.prompt(input.message);
+    try {
+      await agent.prompt(input.message);
 
-    // Auto-compaction: check if context needs compaction and generate summary
-    const autoCompaction = options?.autoCompaction !== false; // default: enabled
-    const messageCount = agent.state.messages.length;
-    if (autoCompaction && messageCount > 50) {
-      try {
-        const usage = estimateContextTokens(agent.state.messages);
-        if (shouldCompact(usage.tokens, 128_000, DEFAULT_COMPACTION_SETTINGS)) {
-          this.deps.repos.createTimeline({
-            sessionId: session.id,
-            type: "agent.compaction.check",
-            title: `Auto-compaction triggered (${messageCount} messages, ~${usage.tokens} tokens)`,
-            status: "running",
-            payload: { messageCount, tokens: usage.tokens },
-          });
-          const summaryResult = await generateSummary(
-            agent.state.messages,
-            agent.state.model,
-            DEFAULT_COMPACTION_SETTINGS.reserveTokens,
-            this.deps.env.openaiApiKey ?? "",
-          );
-          if (summaryResult.ok) {
-            this._compactionSummaries.set(session.id, summaryResult.value);
+      // Auto-compaction: check if context needs compaction and generate summary
+      const autoCompaction = options?.autoCompaction !== false; // default: enabled
+      const messageCount = agent.state.messages.length;
+      if (autoCompaction && messageCount > 50) {
+        try {
+          const usage = estimateContextTokens(agent.state.messages);
+          if (shouldCompact(usage.tokens, 128_000, DEFAULT_COMPACTION_SETTINGS)) {
             this.deps.repos.createTimeline({
               sessionId: session.id,
-              type: "agent.compaction.complete",
-              title: "Auto-compaction completed",
-              status: "completed",
-              payload: { summaryLength: summaryResult.value.length },
+              type: "agent.compaction.check",
+              title: `Auto-compaction triggered (${messageCount} messages, ~${usage.tokens} tokens)`,
+              status: "running",
+              payload: { messageCount, tokens: usage.tokens },
             });
+            const summaryResult = await generateSummary(
+              agent.state.messages,
+              agent.state.model,
+              DEFAULT_COMPACTION_SETTINGS.reserveTokens,
+              this.deps.env.openaiApiKey ?? "",
+            );
+            if (summaryResult.ok) {
+              this._compactionSummaries.set(session.id, summaryResult.value);
+              this.deps.repos.createTimeline({
+                sessionId: session.id,
+                type: "agent.compaction.complete",
+                title: "Auto-compaction completed",
+                status: "completed",
+                payload: { summaryLength: summaryResult.value.length },
+              });
+            }
           }
+        } catch {
+          // Compaction is best-effort; do not fail the prompt
         }
-      } catch {
-        // Compaction is best-effort; do not fail the prompt
       }
-    }
 
-    const messages = agent.state.messages;
-    this.deps.sessions.append(session.id, "agent_state", { messageCount: messages.length });
-    const last = messages.at(-1);
-    return {
-      sessionId: session.id,
-      messages,
-      text: extractAssistantText(last),
-    };
+      const messages = agent.state.messages;
+      this.deps.sessions.append(session.id, "agent_state", { messageCount: messages.length });
+      const last = messages.at(-1);
+      return {
+        sessionId: session.id,
+        messages,
+        text: extractAssistantText(last),
+      };
+    } finally {
+      unsubscribe();
+    }
   }
 
   private async routeSlashCommand(
