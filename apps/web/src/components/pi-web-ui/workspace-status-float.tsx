@@ -12,25 +12,60 @@ export function WorkspaceStatusFloat({
   subagents: SubagentViewState[];
 }) {
   const recentSubagents = subagents.slice(0, 5);
+  const activeCount = subagents.length;
 
   return (
-    <div className="absolute right-4 top-4 z-20 hidden w-80 rounded-lg border bg-popover/95 p-4 shadow-lg backdrop-blur md:block">
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="text-muted-foreground text-sm">Subagents</div>
-          {subagents.length > 0 && <div className="text-muted-foreground text-xs">{subagents.length}</div>}
+    <>
+      {/* Desktop: full card (shown on md+; removed the gating md:hidden constraint) */}
+      <div className="absolute right-4 top-4 z-20 hidden w-80 rounded-lg border bg-popover/95 p-4 shadow-lg backdrop-blur md:block">
+        <SubagentListPanel onOpenSubagent={onOpenSubagent} recentSubagents={recentSubagents} subagents={subagents} />
+      </div>
+
+      {/* Mobile: compact bottom pill — always visible when subagents exist */}
+      {activeCount > 0 && (
+        <button
+          aria-label="Open sub-agent status"
+          className="fixed inset-x-0 bottom-16 z-30 mx-auto flex w-fit items-center gap-2 rounded-full border bg-popover/95 px-4 py-2 text-sm shadow-lg backdrop-blur md:hidden"
+          onClick={() => {
+            const first = recentSubagents[0];
+            if (first) onOpenSubagent(first.id);
+          }}
+          type="button"
+        >
+          <BotIcon className="size-4 text-sky-500" />
+          <span className="font-medium">{activeCount} sub-agent{activeCount === 1 ? "" : "s"}</span>
+          <span className="text-muted-foreground text-xs">tap to view</span>
+        </button>
+      )}
+    </>
+  );
+}
+
+function SubagentListPanel({
+  onOpenSubagent,
+  recentSubagents,
+  subagents,
+}: {
+  onOpenSubagent: (id: string) => void;
+  recentSubagents: SubagentViewState[];
+  subagents: SubagentViewState[];
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-muted-foreground text-sm">Subagents</div>
+        {subagents.length > 0 && <div className="text-muted-foreground text-xs">{subagents.length}</div>}
+      </div>
+      {recentSubagents.length === 0 ? (
+        <div className="text-muted-foreground text-sm">No sub-agents yet</div>
+      ) : (
+        <div className="space-y-1">
+          {recentSubagents.map((agent) => (
+            <SubagentFloatRow agent={agent} key={agent.id} onOpen={() => onOpenSubagent(agent.id)} />
+          ))}
         </div>
-        {recentSubagents.length === 0 ? (
-          <div className="text-muted-foreground text-sm">No sub-agents yet</div>
-        ) : (
-          <div className="space-y-1">
-            {recentSubagents.map((agent) => (
-              <SubagentFloatRow agent={agent} key={agent.id} onOpen={() => onOpenSubagent(agent.id)} />
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
+      )}
+    </section>
   );
 }
 

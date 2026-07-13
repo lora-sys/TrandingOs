@@ -3,6 +3,7 @@ import { FlaskConicalIcon, RadarIcon, StarIcon } from "lucide-react";
 
 type AlphaRadarCardProps = {
   title: string;
+  symbol?: string;
   category?: string;
   source?: string;
   currentValue?: string;
@@ -11,7 +12,7 @@ type AlphaRadarCardProps = {
   riskRating?: number;
   reasoning?: string;
   onClick?: () => void;
-  onResearchClick?: () => void;
+  onResearchClick?: (symbol: string) => void;
 };
 
 const categoryTone: Record<string, string> = {
@@ -24,6 +25,7 @@ const categoryTone: Record<string, string> = {
 
 export function AlphaRadarCard({
   title,
+  symbol,
   category = "signal",
   source = "radar",
   currentValue = "n/a",
@@ -36,6 +38,8 @@ export function AlphaRadarCard({
 }: AlphaRadarCardProps) {
   const tone = categoryTone[String(category).toLowerCase()] ?? "border-l-cyan-300";
   const risk = Math.max(1, Math.min(5, Math.round(riskRating)));
+  // Fall back to the title when the caller didn't pass an explicit symbol
+  const researchTarget = symbol || title;
   return (
     <motion.article
       className={`min-h-52 rounded-lg border border-white/10 border-l-2 ${tone} bg-card/70 p-4 backdrop-blur-xl transition-colors hover:border-cyan-400/35`}
@@ -63,7 +67,7 @@ export function AlphaRadarCard({
             <StarIcon className={`size-3 ${index < risk ? "fill-amber-300 text-amber-300" : "text-muted-foreground"}`} key={index} />
           ))}
         </div>
-        <button className="inline-flex items-center gap-1 rounded-md border border-cyan-400/30 px-2 py-1 text-xs text-cyan-200 hover:bg-cyan-400/10" onClick={(event) => { event.stopPropagation(); onResearchClick?.(); }} type="button">
+        <button className="inline-flex items-center gap-1 rounded-md border border-cyan-400/30 px-2 py-1 text-xs text-cyan-200 hover:bg-cyan-400/10" onClick={(event) => { event.stopPropagation(); onResearchClick?.(researchTarget); }} type="button">
           <FlaskConicalIcon className="size-3" />
           Research this
         </button>

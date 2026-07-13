@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { ChatItem, ChatSubmitStatus, PromptCommand, SessionEntry } from "@/core/types";
 import { syncToItems } from "@/core/chat-conversion";
 import { tradingPiApi } from "@/api/client";
+import { useSubagentsStore, type SubAgentStatusView } from "@/lib/subagentsStore";
 
 export interface UseSSEStreamReturn {
   /** Current rendered chat items */
@@ -192,6 +193,35 @@ export function useSSEStream(options: UseSSEStreamOptions = {}): UseSSEStreamRet
         sse.addEventListener("artifact_update", ((e: CustomEvent) => {
           window.dispatchEvent(new CustomEvent("pi:artifact_update", { detail: e.detail }));
         }) as EventListener);
+
+        // Subagent lifecycle events: subagents:created/started/step/completed/failed/cancelled
+        const subagentEventTypes = ["subagents:created", "subagents:started", "subagents:step", "subagents:completed", "subagents:failed", "subagents:cancelled"];
+        for (const eventType of subagentEventTypes) {
+          sse.addEventListener(eventType, ((e: CustomEvent) => {
+            const detail = (e.detail ?? {}) as Record<string, unknown>;
+            const payload = (detail.payload ?? detail) as Record<string, unknown>;
+            const id = typeof payload.id === "string" ? payload.id : "";
+            if (!id) return;
+            const view: SubAgentStatusView = {
+              id,
+              agentType: typeof payload.agentType === "string" ? payload.agentType : "",
+              description: typeof payload.description === "string" ? payload.description : "",
+              status: typeof payload.status === "string" ? payload.status : "running",
+              workflowId: typeof payload.workflowId === "string" ? payload.workflowId : undefined,
+              stepName: typeof payload.stepName === "string" ? payload.stepName : undefined,
+              stepNumber: typeof payload.stepNumber === "number" ? payload.stepNumber : undefined,
+              totalSteps: typeof payload.totalSteps === "number" ? payload.totalSteps : undefined,
+              startedAt: typeof payload.startedAt === "number" ? payload.startedAt : undefined,
+              completedAt: typeof payload.completedAt === "number" ? payload.completedAt : undefined,
+              durationMs: typeof payload.durationMs === "number" ? payload.durationMs : undefined,
+              isBackground: Boolean(payload.isBackground),
+              result: payload.result,
+              error: typeof payload.error === "string" ? payload.error : undefined,
+              recentEvents: [{ type: eventType, payload, timestamp: Date.now() }],
+            };
+            useSubagentsStore.getState().upsert(view);
+          }) as EventListener);
+        }
 
         sse.addEventListener("done", ((e: CustomEvent) => {
           const detail = e.detail as Record<string, unknown> | undefined;
