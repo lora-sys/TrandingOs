@@ -10,5 +10,6 @@ export {
 } from "./prompt-attachments";
 export { SettingsPanel } from "./settings-panel";
 export { SubagentDetailSidebar } from "./subagent-detail-sidebar";
+export { SubagentInlineCard, SubagentInlineCards } from "./subagent-inline-card";
 export { UserMessageView } from "./user-message-view";
 export { WorkspaceStatusFloat } from "./workspace-status-float";

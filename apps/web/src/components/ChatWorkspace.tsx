@@ -41,6 +41,7 @@ import {
   PromptAttachmentButton,
   PromptAttachmentPreview,
   SubagentDetailSidebar,
+  SubagentInlineCards,
   UserMessageView,
   WorkspaceStatusFloat,
 } from "@/components/pi-web-ui";
@@ -68,6 +69,8 @@ import type {
 
 // ── API & Store ──
 import { useSettingsStore } from "@/lib/settingsStore";
+import { useSubagentsStore } from "@/lib/subagentsStore";
+import { tradingPiApi } from "@/api/client";
 
 /**
  * ChatWorkspace — Thin orchestrator for the trading terminal chat interface.
@@ -282,6 +285,18 @@ export function ChatWorkspace() {
     return () => window.removeEventListener("pi:artifact_update", handler);
   }, []);
 
+  // Listen for "Research this" requests from AlphaRadarCard — dispatch a research prompt
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ symbol?: string }>).detail;
+      const symbol = typeof detail?.symbol === "string" ? detail.symbol.trim() : "";
+      if (!symbol) return;
+      void submitMessage({ text: `/research ${symbol}` });
+    };
+    window.addEventListener("pi:research_request", handler);
+    return () => window.removeEventListener("pi:research_request", handler);
+  }, [submitMessage]);
+
   // Dialog timeout auto-respond
   useEffect(() => {
     if (!dialog?.timeout) return;
@@ -292,6 +307,14 @@ export function ChatWorkspace() {
   // ── Derived state ──
   const subagentItems = useMemo(() => subagentList(subagents), [subagents]);
   const selectedSubagent = selectedSubagentId ? subagents[selectedSubagentId] : null;
+
+  // Cancel running subagent (inline card button)
+  const stopSubagent = useMutation({
+    mutationFn: (id: string) => tradingPiApi.stopSubAgent(id, "Stopped from chat"),
+  });
+  const cancelSubagent = useCallback((id: string) => {
+    stopSubagent.mutate(id);
+  }, [stopSubagent]);
 
   /* ════════════════════════════════════════════════════
      Render — same layout as before, all logic in hooks above
@@ -307,7 +330,9 @@ export function ChatWorkspace() {
           <Conversation className="h-full">
             <ConversationContent className="mx-auto w-full max-w-3xl gap-3 px-4 py-6">
               {stream.items.length === 0 ? (
-                <motion.div className="flex flex-col items-center gap-6 py-12" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+                <div className="flex flex-col gap-3">
+                  <SubagentInlineCards onCancel={cancelSubagent} onOpen={setSelectedSubagentId} />
+                  <motion.div className="flex flex-col items-center gap-6 py-12" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
                   <ConversationEmptyState
                     description="向 Trading Pi 发送交易指令，开始智能交易对话"
                     icon={<TerminalIcon className="size-7" />}
@@ -336,8 +361,10 @@ export function ChatWorkspace() {
                     ))}
                   </div>
                 </motion.div>
+                </div>
               ) : (
                 <div className="flex flex-col gap-3">
+                  <SubagentInlineCards onCancel={cancelSubagent} onOpen={setSelectedSubagentId} />
                   {stream.items.map((item) =>
                     <div key={item.id}>
                       {item.kind === "message" && item.role === "user" ? (

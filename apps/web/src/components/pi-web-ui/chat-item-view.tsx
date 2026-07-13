@@ -197,6 +197,7 @@ export function ChatItemView({
 
   if (item.kind === "alpha-signal") {
     const signal = item.signal as Record<string, unknown>;
+    const symbol = stringValue(signal.symbol ?? signal.asset ?? signal.ticker, "");
     return (
       <div className="my-2 w-full max-w-sm">
         <AlphaRadarCard
@@ -206,8 +207,12 @@ export function ChatItemView({
           reasoning={stringValue(signal.reasoning ?? signal.summary, "")}
           riskRating={numericValue(signal.risk ?? signal.riskScore, 3)}
           source={stringValue(signal.source, "alpha")}
+          symbol={symbol}
           title={stringValue(signal.title ?? signal.question, "Untitled signal")}
           volume={formatUsd(signal.volume ?? signal.volumeUsd)}
+          onResearchClick={(target) => {
+            window.dispatchEvent(new CustomEvent("pi:research_request", { detail: { symbol: target } }));
+          }}
         />
       </div>
     );

@@ -14,8 +14,7 @@ import {
   BrainCircuitIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/pi-web-ui/app-sidebar";
 import { SettingsPanel } from "@/components/pi-web-ui/settings-panel";
@@ -23,6 +22,7 @@ import { SubagentDetailSidebar } from "@/components/pi-web-ui/subagent-detail-si
 import { WorkspaceStatusFloat } from "@/components/pi-web-ui/workspace-status-float";
 import { useSettingsStore } from "@/lib/settingsStore";
 import { useResolvedTheme } from "@/lib/useResolvedTheme";
+import { useSubagentsStore, type SubAgentStatusView } from "@/lib/subagentsStore";
 import { tradingPiApi } from "@/api/client";
 import type { SubagentStatus, SubagentViewState } from "@/core/types";
 
@@ -59,12 +59,64 @@ export function AppLayout({ children }: { children: ReactNode }) {
     refetchInterval: 15000,
   });
   const recentWorkspaces = Array.isArray(workspacesData) ? workspacesData.slice(0, 5) : [];
+
+  // Live subagent state via SSE-backed store (replaces 2s polling)
+  const subagentsById = useSubagentsStore((s) => s.byId);
+  const activeSubagentIds = useSubagentsStore((s) => s.activeIds);
+  const setAllSubagents = useSubagentsStore((s) => s.setAll);
+
+  // Initial hydration from /api/sub-agents on mount only (no polling)
   const { data: subAgentData } = useQuery({
     queryKey: ["sub-agents"],
     queryFn: () => tradingPiApi.subAgents().catch(() => ({ agents: [] })),
-    refetchInterval: 2000,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
   });
-  const subagents = useMemo(() => normalizeSubagents((subAgentData as any)?.agents), [subAgentData]);
+
+  // Convert backend agents into SubAgentStatusView and seed the store once
+  useEffect(() => {
+    const agents = (subAgentData as { agents?: unknown[] } | undefined)?.agents;
+    if (!Array.isArray(agents)) return;
+    const views: SubAgentStatusView[] = agents.map((row) => {
+      const agent = row as Record<string, unknown>;
+      return {
+        id: String(agent.id ?? ""),
+        agentType: typeof agent.agentType === "string" ? agent.agentType : "",
+        description: typeof agent.description === "string" ? agent.description : "",
+        status: typeof agent.status === "string" ? agent.status : "running",
+        workflowId: typeof agent.workflowId === "string" ? agent.workflowId : undefined,
+        stepName: typeof agent.stepName === "string" ? agent.stepName : undefined,
+        stepNumber: typeof agent.stepNumber === "number" ? agent.stepNumber : undefined,
+        totalSteps: typeof agent.totalSteps === "number" ? agent.totalSteps : undefined,
+        startedAt: typeof agent.startedAt === "number" ? agent.startedAt : undefined,
+        completedAt: typeof agent.completedAt === "number" ? agent.completedAt : undefined,
+        durationMs: typeof agent.durationMs === "number" ? agent.durationMs : undefined,
+        isBackground: Boolean(agent.isBackground),
+        result: agent.result,
+        error: typeof agent.error === "string" ? agent.error : undefined,
+      };
+    }).filter((v) => v.id);
+    if (views.length > 0) setAllSubagents(views);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subAgentData]);
+
+  // Merge SSE-driven views with backend hydration into a flat sorted list
+  const subagentViews = useMemo(() => {
+    return Object.values(subagentsById).sort((a, b) => {
+      const aActive = activeSubagentIds.includes(a.id) ? 0 : 1;
+      const bActive = activeSubagentIds.includes(b.id) ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return (b.startedAt ?? 0) - (a.startedAt ?? 0);
+    });
+  }, [subagentsById, activeSubagentIds]);
+
+  // Normalize for the existing WorkspaceStatusFloat / SubagentDetailSidebar contract
+  const subagents = useMemo(
+    () => subagentViews.map((view) => normalizeSubagentView(view)),
+    [subagentViews],
+  );
+
   const selectedSubagent = selectedSubagentId ? subagents.find((agent) => agent.id === selectedSubagentId) : undefined;
   const stopSubagent = useMutation({
     mutationFn: (agent: SubagentViewState) => tradingPiApi.stopSubAgent(agent.id, "Stopped from WorkspaceStatusFloat"),
@@ -81,7 +133,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   });
   const isOnline = !!healthData;
 
-  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+  const handleDeleteSession = async (e: MouseEvent, sessionId: string) => {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm("Delete this session?")) return;
@@ -328,6 +380,27 @@ export function AppLayout({ children }: { children: ReactNode }) {
       )}
     </div>
   );
+}
+
+function normalizeSubagentView(view: SubAgentStatusView): SubagentViewState {
+  const status = normalizeSubagentStatus(view.status);
+  const source: SubagentViewState["source"] = view.isBackground ? "background" : "foreground";
+  const resultPreview = typeof view.result === "string" ? view.result : undefined;
+  return {
+    id: view.id,
+    type: view.agentType || undefined,
+    description: view.description || undefined,
+    status,
+    finalResponse: typeof view.result === "string" && status === "completed" ? view.result : undefined,
+    resultPreview,
+    error: view.error,
+    toolUses: undefined,
+    durationMs: view.durationMs,
+    isBackground: view.isBackground,
+    source,
+    recentEvents: view.recentEvents ?? [],
+    updatedAt: view.completedAt ?? view.startedAt ?? Date.now(),
+  };
 }
 
 function normalizeSubagents(input: unknown): SubagentViewState[] {
