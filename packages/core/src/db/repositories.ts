@@ -104,6 +104,10 @@ export interface PaperTradeRecord {
   status: PaperTradeStatus;
   settlementReason?: string;
   journalEntryId?: string;
+  stopLoss?: number;
+  takeProfit?: number;
+  amendedAt?: string;
+  realizedPnl: number;
 }
 
 interface WorkspaceRow {
@@ -201,6 +205,10 @@ interface PaperTradeRow {
   status: PaperTradeStatus;
   settlement_reason: string | null;
   journal_entry_id: string | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  amended_at: string | null;
+  realized_pnl: number;
 }
 
 export function nowIso() {
@@ -1177,6 +1185,87 @@ export class Repositories {
     return this.getPaperTrade(paperTradeId);
   }
 
+  updatePaperTrade(
+    paperTradeId: string,
+    input: { stopLoss?: number; takeProfit?: number },
+  ) {
+    const existing = this.getPaperTrade(paperTradeId);
+    if (!existing) return undefined;
+    if (existing.status !== "open") return existing;
+    const timestamp = nowIso();
+    this.db
+      .prepare("UPDATE paper_trades SET stop_loss = ?, take_profit = ?, amended_at = ? WHERE id = ?")
+      .run(
+        input.stopLoss ?? existing.stopLoss ?? null,
+        input.takeProfit ?? existing.takeProfit ?? null,
+        timestamp,
+        paperTradeId,
+      );
+    this.createTimeline({
+      type: "paper_trade_amended",
+      title: `Paper trade amended: ${existing.asset}`,
+      status: "completed",
+      payload: {
+        paperTradeId,
+        decisionId: existing.decisionId,
+        stopLoss: input.stopLoss ?? null,
+        takeProfit: input.takeProfit ?? null,
+      },
+    });
+    return this.getPaperTrade(paperTradeId);
+  }
+
+  partialClosePaperTrade(
+    paperTradeId: string,
+    input: { percentClose: number; exitPrice: number; settlementReason?: string },
+  ) {
+    const existing = this.getPaperTrade(paperTradeId);
+    if (!existing) return undefined;
+    if (existing.status !== "open") return existing;
+    if (input.percentClose <= 0 || input.percentClose > 100) {
+      throw new Error(`partialClose percentClose must be in (0, 100], got ${input.percentClose}`);
+    }
+    const fraction = input.percentClose / 100;
+    const closedSize = existing.positionSize * fraction;
+    const remainingSize = existing.positionSize - closedSize;
+    const closedPnl = (input.exitPrice - existing.entryPrice) * closedSize * directionSign(existing.direction);
+    const notional = Math.abs(existing.entryPrice * closedSize);
+    const closedPnlPercent = notional === 0 ? 0 : (closedPnl / notional) * 100;
+    const timestamp = nowIso();
+    const newRealizedPnl = existing.realizedPnl + closedPnl;
+    const settlementReason = input.settlementReason ?? `partial_close_${input.percentClose}`;
+    const newStatus = remainingSize <= 0 ? "closed" : "open";
+    this.db.prepare(`
+      UPDATE paper_trades
+      SET position_size = ?, pnl = ?, pnl_percent = ?, realized_pnl = ?, exit_time = ?, status = ?, settlement_reason = ?
+      WHERE id = ?
+    `).run(
+      remainingSize,
+      closedPnl,
+      closedPnlPercent,
+      newRealizedPnl,
+      newStatus === "closed" ? timestamp : null,
+      newStatus,
+      settlementReason,
+      paperTradeId,
+    );
+    this.createTimeline({
+      type: "paper_trade_partial_close",
+      title: `Paper trade partial close: ${existing.asset} (${input.percentClose}%)`,
+      status: "completed",
+      payload: {
+        paperTradeId,
+        decisionId: existing.decisionId,
+        percentClose: input.percentClose,
+        exitPrice: input.exitPrice,
+        realizedPnl: closedPnl,
+        remainingSize,
+        status: newStatus,
+      },
+    });
+    return this.getPaperTrade(paperTradeId);
+  }
+
   listPaperTrades(input: { workspaceId?: string; status?: PaperTradeStatus } = {}) {
     const clauses: string[] = [];
     const params: string[] = [];
@@ -1636,6 +1725,10 @@ export class Repositories {
       status: row.status,
       settlementReason: row.settlement_reason ?? undefined,
       journalEntryId: row.journal_entry_id ?? undefined,
+      stopLoss: row.stop_loss ?? undefined,
+      takeProfit: row.take_profit ?? undefined,
+      amendedAt: row.amended_at ?? undefined,
+      realizedPnl: row.realized_pnl,
     };
   }
 }

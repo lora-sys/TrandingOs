@@ -364,7 +364,11 @@ export class TradingPiDatabase {
         exit_time TEXT,
         status TEXT NOT NULL DEFAULT 'open',
         settlement_reason TEXT,
-        journal_entry_id TEXT
+        journal_entry_id TEXT,
+        stop_loss REAL,
+        take_profit REAL,
+        amended_at TEXT,
+        realized_pnl REAL NOT NULL DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS strategies (
@@ -474,6 +478,10 @@ export class TradingPiDatabase {
     this.addColumnIfMissing("research_sessions", "workspace_id", "TEXT");
     this.addColumnIfMissing("paper_trades", "workspace_id", "TEXT");
     this.addColumnIfMissing("paper_trades", "decision_id", "TEXT");
+    this.addColumnIfMissing("paper_trades", "stop_loss", "REAL");
+    this.addColumnIfMissing("paper_trades", "take_profit", "REAL");
+    this.addColumnIfMissing("paper_trades", "amended_at", "TEXT");
+    this.addColumnIfMissing("paper_trades", "realized_pnl", "REAL NOT NULL DEFAULT 0");
     this.addColumnIfMissing("reviews", "workspace_id", "TEXT");
     this.addColumnIfMissing("reviews", "report_json", "TEXT NOT NULL DEFAULT '{}'");
 

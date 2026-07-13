@@ -326,12 +326,15 @@ Return markdown with these headings only: Thesis, Invalidation, Entry, Stop, Tak
   engine.register({
     id: "paper.trade.lifecycle",
     name: "Paper Trade Lifecycle",
-    description: "Execute, monitor, close, or settle paper trades from structured decisions.",
+    description: "Execute, monitor, amend, cancel, partial close, or settle paper trades from structured decisions.",
     riskLevel: "low",
     execute: async (
       input:
         | { action: "execute"; decisionId: string; entryPrice?: number; asset?: string; settlementReason?: string }
         | { action: "monitor"; paperTradeId?: string; workspaceId?: string }
+        | { action: "amend"; paperTradeId: string; stopLoss?: number; takeProfit?: number }
+        | { action: "cancel"; paperTradeId: string; reason?: string }
+        | { action: "partial_close"; paperTradeId: string; percentClose: number; price?: number }
         | { action: "close" | "settle"; paperTradeId: string; exitPrice?: number; settlementReason?: string },
       context,
     ) => {
@@ -358,7 +361,51 @@ Return markdown with these headings only: Thesis, Invalidation, Entry, Stop, Tak
         const trades = input.paperTradeId
           ? [context.repos.getPaperTrade(input.paperTradeId)].filter(Boolean)
           : context.repos.listPaperTrades({ workspaceId: input.workspaceId, status: "open" });
-        return { action: input.action, trades };
+        const annotated = await Promise.all(
+          (trades as Array<NonNullable<ReturnType<typeof context.repos.getPaperTrade>>>).map(async (trade) => {
+            if (trade.status !== "open") {
+              return { ...trade, currentPnl: trade.pnl ?? trade.realizedPnl };
+            }
+            const price = await resolvePaperTradePrice(context, trade.direction, trade.asset, trade.asset);
+            const sign = directionSign(trade.direction);
+            const unrealizedPnl = (price.price - trade.entryPrice) * trade.positionSize * sign;
+            return {
+              ...trade,
+              currentPnl: trade.realizedPnl + unrealizedPnl,
+              currentPrice: price.price,
+              priceSource: price.source,
+              warning: price.warning,
+            };
+          }),
+        );
+        return { action: input.action, trades: annotated };
+      }
+      if (input.action === "amend") {
+        const trade = context.repos.getPaperTrade(input.paperTradeId);
+        if (!trade) throw new Error(`Paper trade not found: ${input.paperTradeId}`);
+        const amended = context.repos.updatePaperTrade(input.paperTradeId, {
+          stopLoss: input.stopLoss,
+          takeProfit: input.takeProfit,
+        });
+        return { action: input.action, trade: amended };
+      }
+      if (input.action === "cancel") {
+        const trade = context.repos.getPaperTrade(input.paperTradeId);
+        if (!trade) throw new Error(`Paper trade not found: ${input.paperTradeId}`);
+        const cancelled = context.repos.cancelPaperTrade(input.paperTradeId, input.reason ?? "cancelled");
+        return { action: input.action, trade: cancelled };
+      }
+      if (input.action === "partial_close") {
+        const trade = context.repos.getPaperTrade(input.paperTradeId);
+        if (!trade) throw new Error(`Paper trade not found: ${input.paperTradeId}`);
+        const price: PaperTradePriceQuote =
+          input.price !== undefined ? { price: input.price, source: "manual" } : await resolvePaperTradePrice(context, trade.direction, trade.asset, trade.asset);
+        const updated = context.repos.partialClosePaperTrade(input.paperTradeId, {
+          percentClose: input.percentClose,
+          exitPrice: price.price,
+          settlementReason: "partial_close",
+        });
+        return { action: input.action, trade: updated, priceSource: price.source, warning: price.warning };
       }
       const trade = context.repos.getPaperTrade(input.paperTradeId);
       if (!trade) throw new Error(`Paper trade not found: ${input.paperTradeId}`);
@@ -887,6 +934,10 @@ function parseRulesViolated(value: string) {
 }
 
 type PaperTradePriceQuote = { price: number; source: string; warning?: string };
+
+function directionSign(direction: string) {
+  return direction === "SHORT" || direction === "NO" ? -1 : 1;
+}
 
 function extractPrice(market: any): number | undefined {
   return (
