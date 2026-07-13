@@ -379,6 +379,121 @@ function extractContent(message: any) {
 
 let agentStatus: "idle" | "running" = "idle";
 
+/**
+ * handleApprovalRespond — POST /api/agent/approvals/:approvalId/respond
+ *
+ * Looks up the approval row, updates its status via the engine, writes a
+ * system message to the session so the user can re-send their prompt, and
+ * records a timeline event. Exported for unit tests.
+ *
+ * Returns the JSON body and status code (the caller writes the response).
+ */
+export async function handleApprovalRespond(
+  res: any,
+  approvalId: string,
+  body: { approved?: unknown; reason?: unknown },
+): Promise<{ status: number; body: unknown }> {
+  const approval = repos.db.prepare("SELECT * FROM approvals WHERE id = ?").get(approvalId) as
+    | { id: string; session_id: string | null; action: string; status: string }
+    | undefined;
+  if (!approval) {
+    return { status: 404, body: { error: "Approval not found" } };
+  }
+  const approved = Boolean(body?.approved);
+  const reason = typeof body?.reason === "string" ? body.reason : undefined;
+  const newStatus = approved ? "approved" : "denied";
+  approvals[approved ? "grant" : "deny"](approvalId);
+  if (approval.session_id) {
+    const systemMessage = approved
+      ? `User approved action ${approval.action} (${approvalId}) — re-send your prompt to continue.`
+      : `User denied action ${approval.action} (${approvalId})${reason ? `: ${reason}` : ""}.`;
+    sessions.append(approval.session_id, "system", {
+      role: "system",
+      content: systemMessage,
+      approvalId,
+      decision: newStatus,
+    });
+    repos.createTimeline({
+      sessionId: approval.session_id,
+      type: "agent.approval.responded",
+      title: `Approval ${newStatus}: ${approval.action}`,
+      status: newStatus === "approved" ? "completed" : "failed",
+      payload: { approvalId, decision: newStatus, reason },
+    });
+  }
+  return { status: 200, body: { ok: true, approvalId, status: newStatus } };
+}
+
+/**
+ * TimelineObserver — short-interval poller for new timeline events during an
+ * active prompt. Emits events via callback; caller unsubscribes via the
+ * returned disposer. Used by the SSE stream handler so the UI can detect
+ * `agent.approval.requested` (block + approvalId) without re-querying.
+ */
+type TimelineObserverEvent = {
+  type: string;
+  approvalId?: string;
+  skillId?: string;
+  args?: unknown;
+  sessionId?: string;
+  payload?: unknown;
+  createdAt: string;
+};
+
+function createTimelineObserver(
+  sessionId: string,
+  onEvent: (event: TimelineObserverEvent) => void,
+  intervalMs = 150,
+): () => void {
+  // Seed the watermark with the latest existing event so we only emit NEW ones.
+  const seed = repos.db
+    .prepare("SELECT id FROM timeline_events ORDER BY created_at DESC, id DESC LIMIT 1")
+    .get() as { id: string } | undefined;
+  let lastSeenId = seed?.id ?? "";
+  let stopped = false;
+
+  const tick = () => {
+    if (stopped) return;
+    try {
+      const rows = repos.db
+        .prepare(
+          `SELECT id, type, payload_json, session_id, created_at
+           FROM timeline_events
+           WHERE id > ? AND session_id = ? AND type = 'agent.approval.requested'
+           ORDER BY id ASC LIMIT 10`,
+        )
+        .all(lastSeenId, sessionId) as Array<{
+        id: string;
+        type: string;
+        payload_json: string | null;
+        session_id: string | null;
+        created_at: string;
+      }>;
+      for (const row of rows) {
+        const payload = row.payload_json ? JSON.parse(row.payload_json) : {};
+        onEvent({
+          type: "agent.approval.requested",
+          approvalId: typeof payload?.approvalId === "string" ? payload.approvalId : undefined,
+          skillId: typeof payload?.skillId === "string" ? payload.skillId : undefined,
+          args: payload?.args,
+          sessionId: row.session_id ?? undefined,
+          payload,
+          createdAt: row.created_at,
+        });
+        lastSeenId = row.id;
+      }
+    } catch {
+      // best-effort; polling is observational only
+    }
+  };
+
+  const handle = setInterval(tick, intervalMs);
+  return () => {
+    stopped = true;
+    clearInterval(handle);
+  };
+}
+
 const server = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
@@ -473,6 +588,15 @@ const server = createServer(async (req, res) => {
       return sendJson(res, { success: true, deleted: sessionId });
     }
     if (url.pathname === "/api/approvals" && req.method === "GET") return sendJson(res, repos.list("approvals"));
+    const approvalRespondMatch = url.pathname.match(/^\/api\/agent\/approvals\/([^/]+)\/respond$/);
+    if (approvalRespondMatch && req.method === "POST") {
+      const result = await handleApprovalRespond(
+        res,
+        decodeURIComponent(approvalRespondMatch[1]!),
+        await readBody(req),
+      );
+      return sendJson(res, result.body, result.status);
+    }
 
     if (url.pathname === "/api/mcp/servers" && req.method === "GET") return sendJson(res, repos.list("mcp_servers"));
     if (url.pathname === "/api/browser/health" && req.method === "GET") return sendJson(res, { configured: Boolean(env.aioSandboxBaseUrl), baseUrl: env.aioSandboxBaseUrl ?? null, provider: env.aioSandboxBaseUrl ? "aio-sandbox" : "playwright" });
@@ -515,8 +639,15 @@ const server = createServer(async (req, res) => {
           }
         } catch { /* client may have disconnected */ }
       });
+      // Resolve the sessionId before polling so we observe the right session.
+      const streamingSession = sessions.ensureSession(sessionId);
+      const unsubscribeTimeline = createTimelineObserver(streamingSession.id, (timelineEvent) => {
+        try {
+          res.write(`event: ${timelineEvent.type}\ndata: ${JSON.stringify(timelineEvent)}\n\n`);
+        } catch { /* client may have disconnected */ }
+      });
       try {
-        const result = await agent.prompt({ message, sessionId }, (event) => {
+        const result = await agent.prompt({ message, sessionId: streamingSession.id }, (event) => {
           try {
             const forwarded = forwardStreamEvent(event);
             const data = JSON.stringify(forwarded);
@@ -531,7 +662,7 @@ const server = createServer(async (req, res) => {
         // Auto-update session name if it was a new session or still has the default name
         const existingSession = sessions.getSession(result.sessionId);
         if (existingSession && (existingSession.name === "Trading Pi Session" || existingSession.name === "新对话")) {
-          const newName = message.slice(0, 40).replace(/[^\w\u4e00-\u9fff\s]/g, "").trim() || "新对话";
+          const newName = message.slice(0, 40).replace(/[^\w一-鿿\s]/g, "").trim() || "新对话";
           sessions.updateSessionName(result.sessionId, newName);
         }
 
@@ -560,6 +691,7 @@ const server = createServer(async (req, res) => {
         } catch { /* client may have disconnected */ }
       } finally {
         unsubscribeSubAgents();
+        unsubscribeTimeline();
         agentStatus = "idle";
       }
       res.end();
