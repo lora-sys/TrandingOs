@@ -12,6 +12,7 @@ import { LangfuseTelemetry } from "@trading-pi/core";
 import { runDeepResearch } from "@trading-pi/core";
 import { getDefaultSubAgentManager } from "@trading-pi/core";
 import { aiPing } from "@trading-pi/core";
+import { classifyError, sendErrorEvent, type AgentErrorCategory } from "./error-classify.js";
 
 const env = loadEnv();
 const paths = ensureLocalPaths(resolveLocalPaths(env));
@@ -545,7 +546,15 @@ const server = createServer(async (req, res) => {
         };
         res.write(`event: done\ndata: ${JSON.stringify(transformed)}\n\n`);
       } catch (err: any) {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+        const error = err instanceof Error ? err : new Error(String(err));
+        const category: AgentErrorCategory = classifyError(error);
+        try {
+          sendErrorEvent(res, category, error.message);
+        } catch { /* client may have disconnected */ }
+        // Also emit the legacy `error` event so existing UI consumers still surface a message.
+        try {
+          res.write(`event: error\ndata: ${JSON.stringify({ error: error.message, category })}\n\n`);
+        } catch { /* client may have disconnected */ }
       } finally {
         unsubscribeSubAgents();
         agentStatus = "idle";

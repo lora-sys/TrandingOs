@@ -298,10 +298,36 @@ export function useSSEStream(options: UseSSEStreamOptions = {}): UseSSEStreamRet
           queryClient.invalidateQueries({ queryKey: ["sessions"] });
         }) as EventListener);
 
-        sse.addEventListener("error", ((e: CustomEvent<{ message?: string; error?: string }>) => {
+        sse.addEventListener("error", ((e: CustomEvent<{ message?: string; error?: string; category?: string }>) => {
           sseRef.current = null;
           setStatus("error");
           setError(e.detail?.message || e.detail?.error || "Connection failed");
+        }) as EventListener);
+
+        // Categorized LLM/provider error — emitted alongside the legacy `error`
+        // event by the server after classifying network/auth/rate-limit/etc.
+        sse.addEventListener("agent.error", ((e: CustomEvent<{ payload?: { category?: string; message?: string }; message?: string }>) => {
+          const detail = (e.detail ?? {}) as { payload?: { category?: string; message?: string }; message?: string };
+          const payload = detail.payload ?? {};
+          const category = payload.category ?? "internal";
+          const message = payload.message ?? detail.message ?? "Agent error";
+          console.error("[agent.error]", { category, message });
+          // Surface as a system-level chat item so the failure is visible inline,
+          // and push it to the existing error state for any toast/inline UI.
+          const errorId = nextId("agent-error");
+          const errorEntry: SessionEntry = {
+            type: "message",
+            id: errorId,
+            message: {
+              role: "system",
+              content: `[${category}] ${message}`,
+              customType: "agent_error",
+            },
+          };
+          entriesRef.current.push(errorEntry);
+          setItems(syncToItems(entriesRef.current, nextId));
+          setStatus("error");
+          setError(`${category}: ${message}`);
         }) as EventListener);
       } catch (err) {
         setStatus("error");
