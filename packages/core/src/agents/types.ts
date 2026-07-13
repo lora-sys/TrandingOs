@@ -52,6 +52,7 @@ export interface SubAgentSession {
   isBackground: boolean;
   workspaceId?: string;
   decisionId?: string;
+  sessionId?: string;
   workflowId: string;
   runId?: string;
   result?: unknown;
