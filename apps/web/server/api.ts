@@ -674,6 +674,23 @@ const server = createServer(async (req, res) => {
       if (!deleted) return sendJson(res, { error: "Session not found" }, 404);
       return sendJson(res, { success: true, deleted: sessionId });
     }
+    const sessionExportMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/export$/);
+    if (sessionExportMatch && req.method === "GET") {
+      const sessionId = decodeURIComponent(sessionExportMatch[1]!);
+      const session = sessions.getSession(sessionId);
+      if (!session) return sendJson(res, { error: "Session not found" }, 404);
+      const entries = sessions.read(sessionId);
+      return sendJson(res, {
+        session: {
+          id: session.id,
+          name: session.name,
+          createdAt: session.createdAt,
+        },
+        entries,
+        exportedAt: new Date().toISOString(),
+        version: readPackageVersion(),
+      });
+    }
     if (url.pathname === "/api/approvals" && req.method === "GET") return sendJson(res, repos.list("approvals"));
     const approvalRespondMatch = url.pathname.match(/^\/api\/agent\/approvals\/([^/]+)\/respond$/);
     if (approvalRespondMatch && req.method === "POST") {

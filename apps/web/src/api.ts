@@ -182,6 +182,12 @@ export const tradingPiApi = {
     return target;
   },
   sessions: () => rpc("/api/sessions"),
+  exportSession: (sessionId: string) => rpc(`/api/sessions/${encodeURIComponent(sessionId)}/export`) as Promise<{
+    session: { id: string; name?: string; createdAt?: string };
+    entries: Array<{ type: string; data?: unknown }>;
+    exportedAt: string;
+    version?: string;
+  }>,
   deleteSession: (sessionId: string) => rpc(`/api/sessions/${sessionId}`, undefined, "DELETE"),
   messages: (sessionId: string) => rpc(`/api/messages?sessionId=${sessionId}`),
   skills: () => rpc("/api/skills"),
