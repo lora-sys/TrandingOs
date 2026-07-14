@@ -16,7 +16,10 @@
     "build": "npm run build --workspaces",
     "check": "tsc -b",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:core": "vitest run packages/core",
+    "test:web": "vitest run apps/web",
+    "test:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --coverage --reporter=verbose"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
