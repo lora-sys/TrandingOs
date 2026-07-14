@@ -521,6 +521,21 @@ const server = createServer(async (req, res) => {
       const buckets = Object.fromEntries(sources.map((s) => [s, getRateLimitStatus(s) ?? null]));
       return sendJson(res, { sources, buckets });
     }
+    if (url.pathname === "/api/version" && req.method === "GET") {
+      // Operational endpoint: package version + uptime + last activity.
+      // Intended for monitoring dashboards and CI smoke tests.
+      const startedAt = serverStartedAt;
+      const lastActivityMs = lastPromptTimestamp;
+      const uptimeSec = Math.round((Date.now() - startedAt) / 1000);
+      const lastActivitySec = lastActivityMs ? Math.round((Date.now() - lastActivityMs) / 1000) : null;
+      return sendJson(res, {
+        version: readPackageVersion(),
+        startedAt: new Date(startedAt).toISOString(),
+        uptimeSec,
+        lastPromptSec: lastActivitySec,
+        nodeEnv: process.env.NODE_ENV ?? "development",
+      });
+    }
     if (url.pathname === "/api/agent/health" && req.method === "GET") {
 	      const aiConfigured = Boolean(env.openaiApiKey);
 	      const aiBase = env.openaiBaseUrl ?? "https://api.openai.com/v1";
@@ -741,6 +756,7 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/session/message" && req.method === "POST") {
       const body = await readBody(req);
+      touchLastPrompt();
       const result = await agent.prompt(body, undefined, {
         thinkingLevel: agentConfig.thinkingLevel,
         modelId: agentConfig.modelId,
@@ -1383,6 +1399,13 @@ server.listen(port, () => console.log(`Trading Pi API listening on http://localh
 
 process.on("uncaughtException", (err) => console.error("Uncaught:", err));
 process.on("unhandledRejection", (err) => console.error("Unhandled:", err));
+
+const serverStartedAt = Date.now();
+let lastPromptTimestamp = 0;
+
+function touchLastPrompt() {
+  lastPromptTimestamp = Date.now();
+}
 
 let cachedVersion: string | undefined;
 function readPackageVersion(): string {
