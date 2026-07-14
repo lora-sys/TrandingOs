@@ -349,6 +349,21 @@ export function ChatWorkspace() {
                     title="Trading Pi"
                   />
                   <div className="text-muted-foreground text-xs">Type / for commands</div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span className="rounded-md border bg-card/60 px-2 py-1">
+                      Model: <span className="text-cyan-200">{modelPicker.model?.name ?? currentModelFromStore ?? "default"}</span>
+                    </span>
+                    <span className="rounded-md border bg-card/60 px-2 py-1">
+                      Thinking: <span className="text-cyan-200">medium</span>
+                    </span>
+                    <button
+                      className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-cyan-200 hover:bg-cyan-400/20"
+                      onClick={() => modelPicker.setOpen(true)}
+                      type="button"
+                    >
+                      Change model
+                    </button>
+                  </div>
                   <div className="grid grid-cols-2 gap-3 w-full max-w-md">
                     {[
                       { label: "市场分析", prompt: "分析当前市场行情和趋势", icon: BarChart3Icon },
