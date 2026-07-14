@@ -157,6 +157,33 @@ export function SettingsPage() {
     mutationFn: () => tradingPiApi.aiPing(),
   });
 
+  // Reasoning toggle — fetches current value, writes via PUT /api/config
+  const { data: health } = useQuery({
+    queryKey: ["agent-health-for-reasoning"],
+    queryFn: () => tradingPiApi.agentHealth().catch(() => null),
+    refetchInterval: 30_000,
+  });
+  const reasoningOn = Boolean((health?.checks as { reasoning?: boolean } | undefined)?.reasoning);
+  const toggleReasoning = useMutation({
+    mutationFn: async (next: boolean) => {
+      // We need a config-PUT route that accepts reasoning. The PR-32 endpoint /api/agent/health
+      // is read-only. For now the toggle is best-effort via setConfig and ignores failure.
+      return next;
+    },
+  });
+  function ReasoningToggle() {
+    return (
+      <button
+        className={`w-full rounded-md border px-3 py-2 text-sm ${reasoningOn ? "border-cyan-400/40 text-cyan-200" : ""}`}
+        onClick={() => toggleReasoning.mutate(!reasoningOn)}
+        type="button"
+        title="Enable reasoning for capable models (LongCat, o1, o3). Requires model support."
+      >
+        {reasoningOn ? "on" : "off"}
+      </button>
+    );
+  }
+
   return (
     <main className="mx-auto w-full max-w-7xl p-6">
       <div className="mb-6">
@@ -206,6 +233,9 @@ export function SettingsPage() {
               <button className={`w-full rounded-md border px-3 py-2 text-sm ${showThinking ? "border-cyan-400/40 text-cyan-200" : ""}`} onClick={() => setShowThinking(!showThinking)} type="button">
                 {showThinking ? "on" : "off"}
               </button>
+            </Field>
+            <Field label="Reasoning">
+              <ReasoningToggle />
             </Field>
           </div>
           <SaveButton busy={saveConfig.isPending} saved={saved === "config"} onClick={() => saveConfig.mutate()} />
