@@ -172,6 +172,16 @@ export function SettingsPage() {
     queryFn: () => tradingPiApi.rateLimits().catch(() => null),
     refetchInterval: 30_000,
   });
+  const { data: memoryList, refetch: refetchMemory, mutate: deleteMemory } = useMutation({
+    mutationKey: ["memory-delete"],
+    mutationFn: (id: string) => tradingPiApi.deleteMemory(id),
+    onSuccess: () => refetchMemory(),
+  });
+  const { data: memoryView } = useQuery({
+    queryKey: ["memory-list"],
+    queryFn: () => tradingPiApi.memory().catch(() => []),
+    refetchInterval: 30_000,
+  });
 
   // Reasoning toggle — fetches current value, writes via PUT /api/config
   const { data: health } = useQuery({
@@ -374,6 +384,40 @@ export function SettingsPage() {
             >
               Refresh
             </button>
+          </Panel>
+        )}
+
+        {Array.isArray(memoryView) && memoryView.length > 0 && (
+          <Panel icon={DatabaseIcon} title={`Memory (${memoryView.length} records)`}>
+            <div className="space-y-1">
+              {memoryView.slice(0, 12).map((m: any, i: number) => (
+                <div className="flex items-start gap-2 rounded-md border bg-card/40 p-2 text-xs" key={m.id ?? i}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{m.domain ?? "memory"}</span>
+                      <span className="text-muted-foreground">{m.key}</span>
+                      {typeof m.importance === "number" && (
+                        <span className="rounded bg-cyan-400/20 px-1 text-[10px] text-cyan-200">imp {m.importance.toFixed(2)}</span>
+                      )}
+                    </div>
+                    <div className="mt-1 line-clamp-2 text-muted-foreground">{String(m.value ?? "").slice(0, 200)}</div>
+                  </div>
+                  {m.id && (
+                    <button
+                      className="rounded border border-rose-400/30 px-2 py-1 text-[10px] text-rose-200 hover:bg-rose-400/10"
+                      disabled={deleteMemory.isPending}
+                      onClick={() => m.id && deleteMemory.mutate(m.id)}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {memoryView.length > 12 && (
+              <p className="mt-2 text-[10px] text-muted-foreground">Showing 12 of {memoryView.length}.</p>
+            )}
           </Panel>
         )}
 

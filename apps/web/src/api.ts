@@ -305,6 +305,7 @@ export const tradingPiApi = {
   queryMemory: (input: any) => rpc("/api/memory/query", input),
   writeMemory: (input: any) => rpc("/api/memory/write", input),
   deleteMemory: (id: string) => rpc(`/api/memory/${encodeURIComponent(id)}`, undefined, "DELETE"),
+  searchMemory: (q: string, limit = 25) => rpc(`/api/memory/query`, { q, limit }),
   ohlcv: (symbol: string, timeframe: string, limit: number) =>
     rpc(`/api/market/ohlcv?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
 };
