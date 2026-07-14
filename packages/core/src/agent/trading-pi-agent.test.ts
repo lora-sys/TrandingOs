@@ -62,6 +62,7 @@ function buildEnv(): TradingPiEnv {
     exchangeFallbacks: ["okx", "bybit"],
     tradingMode: "paper",
     thinkingLevel: "medium",
+    reasoning: false,
   };
 }
 
@@ -221,6 +222,38 @@ describe("TradingPiAgent slash router and session lifecycle (PR-14)", () => {
       // Idempotent: clearing again is a no-op
       agent.clearCompactionSummary("ses_clear");
       expect(summaries._compactionSummaries.has("ses_clear")).toBe(false);
+    } finally {
+      deps.database.close();
+      rmSync(env.dataDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("TradingPiAgent OPENAI_API_KEY guard", () => {
+  it("throws clear error when openaiApiKey is missing and message is not a slash command", async () => {
+    const env = buildEnv();
+    // explicitly omit the key
+    (env as { openaiApiKey?: string }).openaiApiKey = undefined;
+    const deps = buildDeps(env);
+    try {
+      const agent = new TradingPiAgent({ ...deps });
+      await expect(agent.prompt({ message: "Tell me about BTC", sessionId: "ses_no_key" }))
+        .rejects.toThrow(/OPENAI_API_KEY is not configured/);
+    } finally {
+      deps.database.close();
+      rmSync(env.dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not throw for slash commands when key is missing (slash routes to workflow)", async () => {
+    const env = buildEnv();
+    (env as { openaiApiKey?: string }).openaiApiKey = undefined;
+    const deps = buildDeps(env);
+    try {
+      const agent = new TradingPiAgent({ ...deps });
+      // /bootstrap-os is a slash command that should route without touching the LLM
+      const result = await agent.prompt({ message: "/bootstrap-os", sessionId: "ses_no_key_slash" });
+      expect(result.text).toContain("bootstrap");
     } finally {
       deps.database.close();
       rmSync(env.dataDir, { recursive: true, force: true });
