@@ -637,6 +637,27 @@ const server = createServer(async (req, res) => {
       return sendJson(res, status);
     }
     if (url.pathname === "/api/timeline" && req.method === "GET") return sendJson(res, repos.list("timeline_events"));
+    if (url.pathname === "/api/agent/prompts" && req.method === "GET") {
+      // Returns the last N user messages across all sessions — useful for "what did I ask recently?".
+      const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 20), 1), 100);
+      const messages = (repos.list("messages") as Array<{ id: string; session_id: string; role: string; parts?: string; created_at: number }>)
+        .filter((m) => m.role === "user")
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, limit)
+        .map((m) => {
+          let text = "";
+          try {
+            const parts = m.parts ? JSON.parse(m.parts) : [];
+            text = Array.isArray(parts)
+              ? parts.map((p: { text?: string }) => p.text ?? "").filter(Boolean).join("\n")
+              : "";
+          } catch {
+            // parts is opaque; skip text extraction
+          }
+          return { id: m.id, sessionId: m.session_id, role: m.role, text, createdAt: m.created_at };
+        });
+      return sendJson(res, { prompts: messages, count: messages.length, limit });
+    }
     if (url.pathname === "/api/metrics/agent" && req.method === "GET") {
       const sessions = repos.list("sessions") as Array<{ created_at?: string }>;
       const timeline = repos.list("timeline_events") as Array<{ type?: string; status?: string; created_at?: string }>;

@@ -256,6 +256,11 @@ export const tradingPiApi = {
     approvals: { pending: number; approved: number; denied: number };
     subAgents: { active: number };
   }>,
+  agentPrompts: (limit = 20) => rpc(`/api/agent/prompts?limit=${limit}`) as Promise<{
+    prompts: Array<{ id: string; sessionId: string; role: string; text: string; createdAt: number }>;
+    count: number;
+    limit: number;
+  }>,
   artifacts: () => rpc("/api/artifacts"),
   artifact: (id: string) => rpc(`/api/artifacts/${id}`),
   artifactPreview: (id: string) => rpc(`/api/artifacts/${id}/preview`),
