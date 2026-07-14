@@ -241,6 +241,15 @@ export const tradingPiApi = {
   timeline: () => rpc("/api/timeline"),
   audit: () => rpc("/api/audit"),
   cache: () => rpc("/api/cache"),
+  agentMetrics: () => rpc("/api/metrics/agent") as Promise<{
+    ok: boolean;
+    version?: string;
+    generatedAt: string;
+    sessions: { total: number; createdToday: number };
+    prompts: { total: number; today: number };
+    approvals: { pending: number; approved: number; denied: number };
+    subAgents: { active: number };
+  }>,
   artifacts: () => rpc("/api/artifacts"),
   artifact: (id: string) => rpc(`/api/artifacts/${id}`),
   artifactPreview: (id: string) => rpc(`/api/artifacts/${id}/preview`),

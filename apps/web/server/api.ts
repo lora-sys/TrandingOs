@@ -637,6 +637,36 @@ const server = createServer(async (req, res) => {
       return sendJson(res, status);
     }
     if (url.pathname === "/api/timeline" && req.method === "GET") return sendJson(res, repos.list("timeline_events"));
+    if (url.pathname === "/api/metrics/agent" && req.method === "GET") {
+      const sessions = repos.list("sessions") as Array<{ created_at?: string }>;
+      const timeline = repos.list("timeline_events") as Array<{ type?: string; status?: string; created_at?: string }>;
+      const approvals = repos.list("approvals") as Array<{ status?: string; created_at?: string }>;
+      const subAgentActive = subAgents.listActive().length;
+      const today = new Date().toISOString().slice(0, 10);
+      const isToday = (iso?: string) => Boolean(iso && iso.slice(0, 10) === today);
+      const promptEvents = timeline.filter((t) => t.type === "pi.message_update" || t.type === "agent.tool.preflight").length;
+      return sendJson(res, {
+        ok: true,
+        version: readPackageVersion(),
+        generatedAt: new Date().toISOString(),
+        sessions: {
+          total: sessions.length,
+          createdToday: sessions.filter((s) => isToday(s.created_at)).length,
+        },
+        prompts: {
+          total: promptEvents,
+          today: timeline.filter((t) => (t.type === "pi.message_update" || t.type === "agent.tool.preflight") && isToday(t.created_at)).length,
+        },
+        approvals: {
+          pending: approvals.filter((a) => a.status === "pending").length,
+          approved: approvals.filter((a) => a.status === "approved").length,
+          denied: approvals.filter((a) => a.status === "denied").length,
+        },
+        subAgents: {
+          active: subAgentActive,
+        },
+      });
+    }
     if (url.pathname === "/api/sessions" && req.method === "GET") return sendJson(res, repos.list("sessions"));
     if (url.pathname.startsWith("/api/sessions/") && req.method === "DELETE") {
       const sessionId = url.pathname.replace(/^\/api\/sessions\//, "");
