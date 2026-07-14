@@ -51,7 +51,12 @@ export function SlashCommandMenu({ inputValue, onSelect }: SlashCommandMenuProps
   const filtered = useMemo(() => {
     if (!isActive) return [];
     if (query === "") return [...SLASH_COMMANDS];
-    return SLASH_COMMANDS.filter((entry) => entry.cmd.toLowerCase().includes(query));
+    return SLASH_COMMANDS.filter((entry) => {
+      // Compare against the bare command name (no leading slash) so "/re"
+      // matches /research but not /browser.
+      const bare = entry.cmd.slice(1).toLowerCase();
+      return bare.startsWith(query);
+    });
   }, [isActive, query]);
 
   // Reset selection when filter changes

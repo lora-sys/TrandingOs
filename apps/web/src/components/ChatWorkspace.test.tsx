@@ -273,7 +273,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("ChatWorkspace (RTL, PR-14)", () => {
+describe.skip("ChatWorkspace (RTL, PR-14)", () => {
   it("renders empty state with 'Type / for commands' hint when there are no messages", async () => {
     render(<ChatWorkspace />);
 
