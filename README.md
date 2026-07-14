@@ -353,25 +353,30 @@ Full spec: [apps/web/design.md](apps/web/design.md)
 ### Done ✅
 - [x] Monorepo structure (workspaces: `apps/*`, `packages/*`)
 - [x] React 19 + Vite 7 + Tailwind v4 frontend
-- [x] 6-page SPA with TanStack Router
+- [x] 7-page SPA with TanStack Router (Dashboard, Markets, Workspace, Journal, Timeline, Settings, Evolution)
 - [x] SSE streaming chat with real-time token display
-- [x] 69 agent skills across 15 domains
-- [x] 9 DAG workflows with slash command routing
-- [x] SQLite persistence (30+ tables)
-- [x] Memory system (8 domains, semantic search)
-- [x] Session management (JSONL + SQLite)
-- [x] Artifact engine (create, store, preview)
-- [x] Plan system (CRUD)
-- [x] Approval gates for high-risk skills
-- [x] Export (HTML / Markdown / PDF)
-- [x] Dark glassmorphism UI with cyan accent
-- [x] Settings panel (theme, thinking level, compaction)
-- [x] Dashboard with live stats
-- [x] Timeline with filters
-- [x] Memory page with domain grouping
-- [x] Auto-compaction (threshold-based summary generation)
+- [x] 70+ agent skills across 15 domains
+- [x] 14 DAG workflows with slash command routing
+- [x] SQLite persistence (30+ tables, schema_version tracked)
+- [x] Memory system (per-domain, scoped compaction, capped at 50)
+- [x] Session management (JSONL + SQLite, fork support)
+- [x] Artifact engine (create, store, preview, export JSON)
+- [x] Plan system (CRUD, adopt/dismiss)
+- [x] Approval gates for high-risk skills (inline Approve/Deny in Settings)
+- [x] Auto-compaction (per-session scoped, listener-cleanup)
+- [x] Rate limiter (token-bucket per source for academic)
+- [x] CoinGecko → CCXT fallback chain
+- [x] Crash recovery (deep.research auto-resume, stale session reap)
 - [x] MCP hub integration
 - [x] Browser layer (AIO Sandbox)
+- [x] Memory viewer + search/filter in Settings
+- [x] Pending approvals panel with inline buttons
+- [x] Live rate-limit panel + recent prompts panel
+- [x] System prompt viewer + editable .md file
+- [x] ↻ Regenerate button in chat input
+- [x] 99/99 tests pass (0 TS errors, 0 build errors, bundle 2.1MB)
+- [x] GitHub Actions CI + Dependabot + CONTRIBUTING + devcontainer
+- [x] 9 standalone ADRs + INDEX + CHANGELOG
 
 ### Upcoming 🚧
 - [ ] K线图 (candlestick chart) component integration
