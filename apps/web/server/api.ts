@@ -20,6 +20,10 @@ const paths = ensureLocalPaths(resolveLocalPaths(env));
 const db = new TradingPiDatabase(paths.sqlitePath);
 db.migrate();
 const repos = new Repositories(db);
+const reapedResearchSessions = repos.reapStaleRunningSessions();
+if (reapedResearchSessions > 0) {
+  console.warn(`[startup] Marked ${reapedResearchSessions} stale research session(s) as failed (process exited mid-run).`);
+}
 const telemetry = new LangfuseTelemetry(env);
 const sessions = new SessionStore(paths, repos);
 const memory = new MemoryStore(repos);
