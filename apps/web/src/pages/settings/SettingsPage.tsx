@@ -172,6 +172,11 @@ export function SettingsPage() {
     queryFn: () => tradingPiApi.rateLimits().catch(() => null),
     refetchInterval: 30_000,
   });
+  const { data: version } = useQuery({
+    queryKey: ["server-version"],
+    queryFn: () => tradingPiApi.serverVersion().catch(() => null),
+    refetchInterval: 60_000,
+  });
   const { data: memoryView, refetch: refetchMemory } = useQuery({
     queryKey: ["memory-list"],
     queryFn: () => tradingPiApi.memory().catch(() => []),
@@ -348,6 +353,17 @@ export function SettingsPage() {
             </div>
           ) : null}
           {aiPing.error ? <p className="mt-3 text-xs text-red-300">{aiPing.error instanceof Error ? aiPing.error.message : String(aiPing.error)}</p> : null}
+          {version && (
+            <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+              <Info label="Server" value={version.version} />
+              <Info label="Uptime" value={formatUptime(version.uptimeSec)} />
+              <Info
+                label="Last prompt"
+                value={version.lastPromptSec === null ? "never" : formatUptime(version.lastPromptSec) + " ago"}
+              />
+              <Info label="Env" value={version.nodeEnv} />
+            </div>
+          )}
         </Panel>
 
         {rateLimits && rateLimits.sources.length > 0 && (
@@ -519,4 +535,11 @@ export function SettingsPage() {
       </div>
     </main>
   );
+}
+
+function formatUptime(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  if (sec < 86_400) return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+  return `${Math.floor(sec / 86_400)}d ${Math.floor((sec % 86_400) / 3600)}h`;
 }

@@ -267,6 +267,13 @@ export const tradingPiApi = {
     sources: string[];
     buckets: Record<string, { tokens: number; capacity: number; ratePerMinute: number } | null>;
   }>,
+  serverVersion: () => rpc("/api/version") as Promise<{
+    version: string;
+    startedAt: string;
+    uptimeSec: number;
+    lastPromptSec: number | null;
+    nodeEnv: string;
+  }>,
   artifacts: () => rpc("/api/artifacts"),
   artifact: (id: string) => rpc(`/api/artifacts/${id}`),
   artifactPreview: (id: string) => rpc(`/api/artifacts/${id}/preview`),
