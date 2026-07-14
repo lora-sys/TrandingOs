@@ -9,7 +9,10 @@ import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const LIMIT_KB = Number(process.env.BUNDLE_SIZE_LIMIT_KB ?? 2500);
-const DIST_DIR = resolve(process.cwd(), "dist/assets");
+// scripts/check-bundle-size.mjs lives at <repo>/scripts/. Cwd is the apps/web
+// directory when invoked via `cd apps/web && node ../../scripts/...`. Default to
+// the relative path from repo root, which is ../apps/web/dist/assets.
+const DIST_DIR = process.env.BUNDLE_DIST_DIR ?? resolve(process.cwd(), "dist/assets");
 const MAIN_PREFIX = "index-";
 
 let largest = 0;

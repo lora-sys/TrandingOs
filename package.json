@@ -14,13 +14,14 @@
     "dev": "concurrently \"npm run server -w @trading-pi/web\" \"npm run dev -w @trading-pi/web\"",
     "dev:web": "npm run dev -w @trading-pi/web",
     "build": "npm run build --workspaces",
-    "check:size": "node scripts/check-bundle-size.mjs",
+    "check:size": "BUNDLE_DIST_DIR=apps/web/dist/assets node scripts/check-bundle-size.mjs",
     "check": "tsc -b",
     "test": "vitest run",
     "test:core": "vitest run packages/core",
     "test:web": "vitest run apps/web",
     "test:coverage": "vitest run --coverage",
-    "test:ci": "vitest run --coverage --reporter=verbose"
+    "test:ci": "vitest run --coverage --reporter=verbose",
+    "verify": "npm run check && npm run test && npm run build && npm run check:size"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
