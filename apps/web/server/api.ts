@@ -1313,6 +1313,23 @@ const server = createServer(async (req, res) => {
       );
       return sendJson(res, { sessionId: session.id, ...result.output });
     }
+    const rejectSuggestionMatch = url.pathname.match(/^\/api\/evolution\/suggestions\/([^/]+)\/reject$/);
+    if (rejectSuggestionMatch && req.method === "POST") {
+      const suggestionId = decodeURIComponent(rejectSuggestionMatch[1]!);
+      const suggestion = repos.getEvolutionSuggestion(suggestionId);
+      if (!suggestion) return sendJson(res, { error: "Suggestion not found" }, 404);
+      if (suggestion.status !== "proposed") {
+        return sendJson(res, { error: `Suggestion already ${suggestion.status}`, suggestionId, status: suggestion.status }, 409);
+      }
+      const updated = repos.updateEvolutionSuggestionStatus(suggestionId, "dismissed");
+      repos.createTimeline({
+        type: "evolution",
+        title: `Evolution suggestion rejected: ${suggestion.title}`,
+        status: "completed",
+        payload: { suggestionId, title: suggestion.title },
+      });
+      return sendJson(res, { suggestion: updated });
+    }
     if (url.pathname === "/api/user-rules" && req.method === "GET") {
       const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
       const rules = (memory.query({ domain: "user_rules", limit: 100 }) as Array<{ workspace_id?: string | null }>).filter(
