@@ -36,10 +36,13 @@ describe("fetchCoinGeckoQuoteWithFallback", () => {
     const { fetchCoinGeckoQuoteWithFallback } = await import("./coingecko.js");
     const { fetchCcxtTicker } = await import("./ccxt.js");
     const result = await fetchCoinGeckoQuoteWithFallback("ETH", undefined, { fallbackExchange: "binance" });
-    expect(result.source).toBe("ccxt:binance");
-    expect(result.fallback).toBe(true);
-    expect(result.priceUsd).toBe(1234.5);
-    expect(result.primaryError).toMatch(/429/);
+    expect("fallback" in result).toBe(true);
+    if ("fallback" in result) {
+      expect(result.source).toBe("ccxt:binance");
+      expect(result.fallback).toBe(true);
+      expect(result.priceUsd).toBe(1234.5);
+      expect(result.primaryError).toMatch(/429/);
+    }
     expect(vi.mocked(fetchCcxtTicker)).toHaveBeenCalledWith("binance", "ETH");
   });
 
@@ -47,8 +50,11 @@ describe("fetchCoinGeckoQuoteWithFallback", () => {
     globalThis.fetch = vi.fn(async () => { throw new Error("ECONNREFUSED"); }) as unknown as typeof fetch;
     const { fetchCoinGeckoQuoteWithFallback } = await import("./coingecko.js");
     const result = await fetchCoinGeckoQuoteWithFallback("BTC", undefined, { fallbackExchange: "okx" });
-    expect(result.source).toBe("ccxt:okx");
-    expect(result.fallback).toBe(true);
-    expect(result.primaryError).toMatch(/ECONNREFUSED/);
+    expect("fallback" in result).toBe(true);
+    if ("fallback" in result) {
+      expect(result.source).toBe("ccxt:okx");
+      expect(result.fallback).toBe(true);
+      expect(result.primaryError).toMatch(/ECONNREFUSED/);
+    }
   });
 });

@@ -53,8 +53,15 @@ export class MemoryStore {
   }
 
   contextBlock(scope = "user", limit = 50) {
-    const records = this.list(scope).slice(0, limit);
+    // Use query() to get all relevant records (any domain), not just records
+    // whose scope column equals `scope`. The scope arg is kept for backward
+    // compatibility but is informational only at the moment — future versions
+    // can use it to filter by workspace/user-scope.
+    const records = this.query({ limit }) as Array<{ key: string; value: string }>;
     if (records.length === 0) return "No saved local memory yet.";
-    return records.map((record) => `- ${record.key}: ${record.value}`).join("\n");
+    return records
+      .slice(0, limit)
+      .map((record) => `- ${record.key}: ${record.value}`)
+      .join("\n");
   }
 }

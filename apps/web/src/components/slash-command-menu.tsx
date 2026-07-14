@@ -108,7 +108,7 @@ export function SlashCommandMenu({ inputValue, onSelect }: SlashCommandMenuProps
                 return (
                   <CommandItem
                     key={entry.cmd}
-                    ref={(node) => {
+                    ref={(node: HTMLDivElement | null) => {
                       itemRefs.current[idx] = node;
                     }}
                     className={cn(

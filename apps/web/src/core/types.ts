@@ -160,8 +160,10 @@ export type Usage = {
 
 export type ModelInfo = {
   id: string;
+  name?: string;
   provider?: string;
   contextWindow?: number;
+  reasoning?: boolean;
 };
 
 export type MirrorSync = {

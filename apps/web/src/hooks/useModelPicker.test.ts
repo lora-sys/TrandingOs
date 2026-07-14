@@ -88,7 +88,7 @@ describe("useModelPicker lifecycle (stubbed fetch)", () => {
   });
 
   it("handles an empty models array without throwing", () => {
-    const payload = { models: [], current: "anything" };
+    const payload = { models: [] as Array<{ id: string; name: string; provider: string; contextWindow: number }>, current: "anything" };
     const list = payload.models.map((m) => ({
       id: m.id, name: m.name, provider: m.provider, contextWindow: m.contextWindow,
     }));

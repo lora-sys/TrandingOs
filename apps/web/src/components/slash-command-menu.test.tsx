@@ -5,7 +5,9 @@
  * Uses @testing-library/react + vitest's environment. RTL/jsdom is required;
  * if not installed, skip via `npx vitest run --reporter=verbose`.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+import { fireEvent, screen } from "@testing-library/dom";
 import { describe, expect, it, vi } from "vitest";
 import { SlashCommandMenu, SLASH_COMMANDS } from "./slash-command-menu";
 

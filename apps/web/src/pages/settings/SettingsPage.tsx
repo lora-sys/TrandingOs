@@ -172,15 +172,14 @@ export function SettingsPage() {
     queryFn: () => tradingPiApi.rateLimits().catch(() => null),
     refetchInterval: 30_000,
   });
-  const { data: memoryList, refetch: refetchMemory, mutate: deleteMemory } = useMutation({
-    mutationKey: ["memory-delete"],
-    mutationFn: (id: string) => tradingPiApi.deleteMemory(id),
-    onSuccess: () => refetchMemory(),
-  });
-  const { data: memoryView } = useQuery({
+  const { data: memoryView, refetch: refetchMemory } = useQuery({
     queryKey: ["memory-list"],
     queryFn: () => tradingPiApi.memory().catch(() => []),
     refetchInterval: 30_000,
+  });
+  const deleteMemory = useMutation({
+    mutationFn: (id: string) => tradingPiApi.deleteMemory(id),
+    onSuccess: () => refetchMemory(),
   });
 
   // Reasoning toggle — fetches current value, writes via PUT /api/config

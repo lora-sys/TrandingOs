@@ -240,8 +240,6 @@ export const tradingPiApi = {
     rpc(`/api/evolution/suggestions/${encodeURIComponent(id)}/apply`, body),
   rejectEvolutionSuggestion: (id: string) =>
     rpc(`/api/evolution/suggestions/${encodeURIComponent(id)}/reject`, {}),
-  applyEvolutionSuggestion: (id: string, input: { approvedByUser: boolean; finalRuleText?: string; sessionId?: string } = { approvedByUser: true }) =>
-    rpc(`/api/evolution/suggestions/${encodeURIComponent(id)}/apply`, input),
   userRules: (workspaceId?: string) => rpc(`/api/user-rules${workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ""}`),
   createUserRule: (input: { key?: string; value: string; workspaceId?: string }) => rpc("/api/user-rules", input),
   subAgents: () => rpc("/api/sub-agents"),

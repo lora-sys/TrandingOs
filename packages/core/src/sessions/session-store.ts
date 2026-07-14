@@ -121,7 +121,6 @@ export class SessionStore {
       };
       appendFileSync(path, `${JSON.stringify(forkEntry)}\n`);
     }
-    this.repos.createSessionFork(sessionId, parentSessionId, name);
     return { id: sessionId, name, path, createdAt, parentSessionId };
   }
 }

@@ -15,6 +15,7 @@ function buildEnv(): TradingPiEnv {
     exchangeFallbacks: ["okx", "bybit"],
     tradingMode: "paper",
     thinkingLevel: "medium",
+    reasoning: false,
   };
 }
 

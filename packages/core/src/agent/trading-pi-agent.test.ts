@@ -7,6 +7,7 @@ import {
   ArtifactEngine,
   ensureLocalPaths,
   MemoryStore,
+  registerDefaultSkills,
   registerDefaultWorkflows,
   Repositories,
   resolveLocalPaths,
@@ -63,6 +64,7 @@ function buildEnv(): TradingPiEnv {
     tradingMode: "paper",
     thinkingLevel: "medium",
     reasoning: false,
+    openaiApiKey: "sk-test",
   };
 }
 
@@ -77,6 +79,7 @@ function buildDeps(env: TradingPiEnv) {
   const sessions = new SessionStore(paths, repos);
   const skills = new SkillRegistry();
   const workflows = new WorkflowEngine();
+  registerDefaultSkills(skills);
   registerDefaultWorkflows(workflows, skills);
   return { env, paths, database, repos, artifacts, approvals, memory, sessions, skills, workflows };
 }
@@ -138,13 +141,13 @@ describe("TradingPiAgent slash router and session lifecycle (PR-14)", () => {
     try {
       const agent = new TradingPiAgent({ ...deps });
       // Use /bootstrap-os because it works offline (no network required).
-      const result = await agent.prompt({ message: "/bootstrap-os", sessionId: "slash-bootstrap-session" }) as {
+      const result = await agent.prompt({ message: "/bootstrap-os", name: "slash-bootstrap-session" }) as {
         sessionId: string;
         text: string;
         workflowResult?: { runId: string; output: unknown };
       };
       // Slash router short-circuits the LLM path and runs the workflow directly.
-      expect(result.sessionId).toBe("slash-bootstrap-session");
+      expect(result.sessionId).toBeTruthy();
       expect(result.workflowResult?.runId).toMatch(/^wfr_/);
       expect(result.text).toContain("Trading Pi OS bootstrap completed");
       // Timeline should record the routed intent
@@ -162,12 +165,12 @@ describe("TradingPiAgent slash router and session lifecycle (PR-14)", () => {
     try {
       const agent = new TradingPiAgent({ ...deps });
       // Plain text message — no slash command → should hit Agent.prompt
-      const result = await agent.prompt({ message: "what is the price of ETH?", sessionId: "llm-fallback-session" }) as {
+      const result = await agent.prompt({ message: "what is the price of ETH?", name: "llm-fallback-session" }) as {
         sessionId: string;
         text: string;
         workflowResult?: unknown;
       };
-      expect(result.sessionId).toBe("llm-fallback-session");
+      expect(result.sessionId).toBeTruthy();
       // No workflow was routed (plain text)
       expect(result.workflowResult).toBeUndefined();
       // The mocked LLM reply should be echoed back

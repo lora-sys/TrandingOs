@@ -12,7 +12,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useResolvedTheme } from "@/lib/useResolvedTheme";
 import {
@@ -351,7 +351,7 @@ export function ChatWorkspace() {
                   <div className="text-muted-foreground text-xs">Type / for commands</div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span className="rounded-md border bg-card/60 px-2 py-1">
-                      Model: <span className="text-cyan-200">{modelPicker.model?.name ?? currentModelFromStore ?? "default"}</span>
+                      Model: <span className="text-cyan-200">{String(modelPicker.model?.name ?? currentModelFromStore ?? "default")}</span>
                     </span>
                     <span className="rounded-md border bg-card/60 px-2 py-1">
                       Thinking: <span className="text-cyan-200">medium</span>
