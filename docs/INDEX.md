@@ -54,6 +54,32 @@
 - [evidence/mvp-decision-workspace/spec-compliance.md](evidence/mvp-decision-workspace/spec-compliance.md) — REQ-MVP status matrix
 - [evidence/mvp-decision-workspace/README.md](evidence/mvp-decision-workspace/README.md) — How to reproduce MVP evidence
 
+## Recent Improvements (2026-07)
+
+See the audit + PR roadmap in `evidence/audit-2026-07-12/`:
+- 53 PRs shipped across 5 sprints (UI visibility, runtime correctness, workflow hardening, process, incremental)
+- 130-issue audit closed: 16/16 critical + 23+ medium
+- 62+ unit tests, GitHub Actions CI, 9 standalone ADRs
+
+## Endpoints Added in This Wave
+
+Agent:
+- `GET /api/agent/health` — config check
+- `GET /api/agent/health?ping=1` — live provider round-trip
+- `GET /api/agent/system-prompt` — current system prompt
+- `GET /api/agent/prompts?limit=N` — recent user messages
+- `POST /api/agent/approvals/:id/respond` — approve/deny pending
+- `GET /api/metrics/agent` — session/prompt/approval counts
+- `GET /api/util/rate-limits` — bucket visibility
+
+Sessions:
+- `GET /api/sessions/:id/export` — JSON transcript
+- `DELETE /api/sessions/:id` — delete session
+
+Evolution:
+- `POST /api/evolution/suggestions/:id/apply` — adopt suggestion
+- `POST /api/evolution/suggestions/:id/reject` — dismiss suggestion
+
 ## Process
 
 - [../.github/PULL_REQUEST_TEMPLATE.md](../.github/PULL_REQUEST_TEMPLATE.md) — PR format
