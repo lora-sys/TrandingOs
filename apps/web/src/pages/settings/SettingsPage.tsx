@@ -167,6 +167,12 @@ export function SettingsPage() {
     mutationFn: () => tradingPiApi.aiPing(),
   });
 
+  const { data: rateLimits, refetch: refetchRateLimits } = useQuery({
+    queryKey: ["rate-limits"],
+    queryFn: () => tradingPiApi.rateLimits().catch(() => null),
+    refetchInterval: 30_000,
+  });
+
   // Reasoning toggle — fetches current value, writes via PUT /api/config
   const { data: health } = useQuery({
     queryKey: ["agent-health-for-reasoning"],
@@ -334,6 +340,42 @@ export function SettingsPage() {
           ) : null}
           {aiPing.error ? <p className="mt-3 text-xs text-red-300">{aiPing.error instanceof Error ? aiPing.error.message : String(aiPing.error)}</p> : null}
         </Panel>
+
+        {rateLimits && rateLimits.sources.length > 0 && (
+          <Panel icon={SlidersHorizontalIcon} title="Rate Limits (live)">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {rateLimits.sources.map((source) => {
+                const b = rateLimits.buckets[source];
+                if (!b) return null;
+                const pct = b.capacity > 0 ? Math.round((b.tokens / b.capacity) * 100) : 0;
+                return (
+                  <div className="rounded-md border bg-card/40 p-3 text-xs" key={source}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{source}</span>
+                      <span className="text-muted-foreground">{b.ratePerMinute}/min</span>
+                    </div>
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded bg-card/60">
+                      <div
+                        className={pct > 50 ? "h-full bg-amber-400" : "h-full bg-cyan-400"}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 text-[10px] text-muted-foreground">
+                      {b.tokens.toFixed(1)} / {b.capacity} tokens
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              className="mt-3 rounded-md border border-white/10 px-3 py-1 text-xs"
+              onClick={() => refetchRateLimits()}
+              type="button"
+            >
+              Refresh
+            </button>
+          </Panel>
+        )}
 
         <Panel icon={FileTextIcon} title="System Prompt">
           <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
