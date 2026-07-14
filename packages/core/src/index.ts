@@ -29,3 +29,4 @@ export * from "./journal.js";
 export * from "./memory/types.js";
 export * from "./strategy.js";
 export * from "./research/bundle.js";
+export * from "./util/rate-limiter.js";
