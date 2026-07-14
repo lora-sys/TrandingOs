@@ -517,18 +517,42 @@ const server = createServer(async (req, res) => {
 	      const aiConfigured = Boolean(env.openaiApiKey);
 	      const aiBase = env.openaiBaseUrl ?? "https://api.openai.com/v1";
 	      const aiModel = env.openaiModel;
+	      const checks = {
+	        openaiKeyConfigured: aiConfigured,
+	        openaiBaseUrl: aiBase,
+	        openaiModel: aiModel,
+	        thinkingLevel: env.thinkingLevel,
+	        reasoning: env.reasoning,
+	        tradingMode: env.tradingMode,
+	        dataDir: env.dataDir,
+	      };
+	      // Optional live ping when ?ping=1 is passed (caller chooses to incur latency).
+	      const urlObj = new URL(req.url ?? "/", "http://localhost");
+	      const wantPing = urlObj.searchParams.get("ping") === "1";
+	      if (wantPing && aiConfigured) {
+	        try {
+	          const start = Date.now();
+	          const result = await aiPing(env);
+	          return sendJson(res, {
+	            ok: true,
+	            ready: true,
+	            checks: { ...checks, pingMs: Date.now() - start, pingText: result.text?.slice(0, 80) },
+	            message: `Agent ready (ping ${Date.now() - start}ms).`,
+	          });
+	        } catch (err) {
+	          const message = err instanceof Error ? err.message : String(err);
+	          return sendJson(res, {
+	            ok: false,
+	            ready: false,
+	            checks: { ...checks, pingError: message },
+	            message: `Configured but ping failed: ${message}`,
+	          }, 503);
+	        }
+	      }
 	      return sendJson(res, {
 	        ok: true,
 	        ready: aiConfigured,
-	        checks: {
-	          openaiKeyConfigured: aiConfigured,
-	          openaiBaseUrl: aiBase,
-	          openaiModel: aiModel,
-	          thinkingLevel: env.thinkingLevel,
-	          reasoning: env.reasoning,
-	          tradingMode: env.tradingMode,
-	          dataDir: env.dataDir,
-	        },
+	        checks,
 	        message: aiConfigured
 	          ? "Agent ready."
 	          : "OPENAI_API_KEY not set. Set it in .env or via PUT /api/config before sending chat messages.",
