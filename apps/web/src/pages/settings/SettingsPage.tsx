@@ -84,6 +84,16 @@ export function SettingsPage() {
     setApiKeys(nextKeys);
   }, []);
 
+  const { data: pendingApprovals } = useQuery({
+    queryKey: ["approvals-pending"],
+    queryFn: () => tradingPiApi.approvals().catch(() => []),
+    refetchInterval: 5_000,
+  });
+  const pendingApprovalList = Array.isArray(pendingApprovals)
+    ? (pendingApprovals as Array<{ id?: string; toolName?: string; description?: string; riskLevel?: string; createdAt?: string; status?: string }>)
+        .filter((a) => a.status === "pending")
+    : [];
+
   useEffect(() => {
     if (!Array.isArray(rules)) return;
     setRuleEditor(rules.map((item: any) => String(item.value ?? "")).filter(Boolean).join("\n"));
@@ -153,6 +163,25 @@ export function SettingsPage() {
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">Model controls, data-source readiness, risk defaults, appearance, rules, and research preferences.</p>
       </div>
+
+      {pendingApprovalList.length > 0 && (
+        <Panel icon={ShieldCheckIcon} title={`Pending Approvals (${pendingApprovalList.length})`}>
+          <div className="space-y-2">
+            {pendingApprovalList.slice(0, 5).map((approval) => (
+              <div className="rounded-md border border-amber-400/30 bg-amber-400/5 p-3 text-sm" key={approval.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{approval.toolName ?? approval.description ?? "Unknown action"}</span>
+                  <span className="text-xs text-muted-foreground">{approval.riskLevel ?? "?"}</span>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Awaiting your response. Open the chat to approve or deny.
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel icon={SettingsIcon} title="AI Model">
           <div className="grid gap-3 sm:grid-cols-3">
