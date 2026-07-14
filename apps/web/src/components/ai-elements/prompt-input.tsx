@@ -349,8 +349,12 @@ export const PromptInputActionAddAttachments = ({
   const attachments = usePromptInputAttachments();
 
   const handleSelect = useCallback(
-    (e: Event) => {
-      e.preventDefault();
+    (e: { preventDefault?: () => void; defaultPrevented?: boolean }) => {
+      e.preventDefault?.();
+      if (e.defaultPrevented) {
+        return;
+      }
+      e.preventDefault?.();
       attachments.openFileDialog();
     },
     [attachments],
@@ -369,14 +373,13 @@ export type PromptInputActionAddScreenshotProps = ComponentProps<typeof Dropdown
 
 export const PromptInputActionAddScreenshot = ({
   label = "Take screenshot",
-  onSelect,
   ...props
 }: PromptInputActionAddScreenshotProps) => {
   const attachments = usePromptInputAttachments();
 
   const handleSelect = useCallback(
-    async (event: Event) => {
-      onSelect?.(event);
+    async (event: { preventDefault?: () => void; defaultPrevented?: boolean }) => {
+      event.preventDefault?.();
       if (event.defaultPrevented) {
         return;
       }
@@ -393,7 +396,7 @@ export const PromptInputActionAddScreenshot = ({
         throw error;
       }
     },
-    [onSelect, attachments],
+    [attachments],
   );
 
   return (
@@ -1060,13 +1063,13 @@ export const PromptInputSubmit = ({
   }
 
   const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
+    (e: React.MouseEvent<HTMLButtonElement> & { preventDefault: () => void }) => {
       if (isGenerating && onStop) {
         e.preventDefault();
         onStop();
         return;
       }
-      onClick?.(e);
+      onClick?.(e as unknown as Parameters<NonNullable<typeof onClick>>[0]);
     },
     [isGenerating, onStop, onClick],
   );
