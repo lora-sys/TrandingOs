@@ -534,6 +534,32 @@ export class TradingPiDatabase {
     this.addColumnIfMissing("decisions", "rule_compliance_json", "TEXT NOT NULL DEFAULT '{}'");
     this.addColumnIfMissing("reviews", "workspace_id", "TEXT");
     this.addColumnIfMissing("reviews", "report_json", "TEXT NOT NULL DEFAULT '{}'");
+
+    // Schema version marker — record the current additive-migration level so future
+    // code can detect which `addColumnIfMissing` calls have already been applied.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT NOT NULL,
+        description TEXT
+      );
+    `);
+    const current = this.db.prepare("SELECT MAX(version) as v FROM schema_version").get() as { v: number | null };
+    const SCHEMA_VERSION = 1;
+    if (!current?.v) {
+      this.db.prepare("INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)").run(
+        SCHEMA_VERSION,
+        new Date().toISOString(),
+        "Initial additive migrations (PR-25)",
+      );
+    } else if (current.v < SCHEMA_VERSION) {
+      this.db.prepare("UPDATE schema_version SET version = ?, applied_at = ?, description = ? WHERE version = ?").run(
+        SCHEMA_VERSION,
+        new Date().toISOString(),
+        "Bump to schema v1 (PR-25)",
+        current.v,
+      );
+    }
   }
 
   private addColumnIfMissing(table: string, column: string, definition: string) {
