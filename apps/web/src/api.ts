@@ -119,6 +119,7 @@ export const tradingPiApi = {
     showThinking?: boolean;
     deepResearch?: { enabled?: boolean; mode?: "builtin" | "openrouter"; maxSteps?: number };
     apiKeys?: Record<string, string>;
+    reasoning?: boolean;
   }) =>
     rpc("/api/config", body),
   /** Available model list + currently-selected model id */

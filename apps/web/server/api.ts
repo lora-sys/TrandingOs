@@ -595,6 +595,9 @@ const server = createServer(async (req, res) => {
 	          }
 	        }
 	      }
+	      if (body.reasoning !== undefined) {
+	        env.reasoning = Boolean(body.reasoning);
+	      }
 	      return sendJson(res, publicAgentConfig());
 	    }
 	    if (url.pathname === "/api/config/models" && req.method === "GET") {

@@ -166,8 +166,9 @@ export function SettingsPage() {
   const reasoningOn = Boolean((health?.checks as { reasoning?: boolean } | undefined)?.reasoning);
   const toggleReasoning = useMutation({
     mutationFn: async (next: boolean) => {
-      // We need a config-PUT route that accepts reasoning. The PR-32 endpoint /api/agent/health
-      // is read-only. For now the toggle is best-effort via setConfig and ignores failure.
+      // Push via the existing /api/config PUT. Backend accepts reasoning in body.
+      await tradingPiApi.setConfig({ reasoning: next });
+      queryClient.invalidateQueries({ queryKey: ["agent-health-for-reasoning"] });
       return next;
     },
   });
