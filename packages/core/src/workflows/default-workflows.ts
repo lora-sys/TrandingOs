@@ -217,10 +217,33 @@ ${context.memory.contextBlock("user")}`,
   engine.register({
     id: "deep.research",
     name: "Deep Research",
-    description: "Run built-in autonomous Deep Research and save a structured ResearchReport artifact.",
+    description: "Run built-in autonomous Deep Research and save a structured ResearchReport artifact. Resumes an incomplete session for the same topic+workspace if one exists.",
     riskLevel: "low",
-    execute: async (input: { topic: string; workspaceId: string; maxIterations?: number; context?: string }, context) =>
-      runDeepResearch(input, context, {
+    execute: async (input: { topic: string; workspaceId: string; maxIterations?: number; context?: string; resume?: boolean }, context) => {
+      // Resume path: if a prior research session is incomplete for this
+      // workspace, return its current state without re-running. The caller
+      // can re-call deep.research to continue from where it left off.
+      if (input.resume !== false) {
+        const incomplete = context.repos.findIncompleteResearchSession(input.workspaceId);
+        if (incomplete && incomplete.topic === input.topic && incomplete.status === "running") {
+          context.repos.createTimeline({
+            sessionId: context.sessionId,
+            workflowRunId: context.workflowRunId,
+            type: "research",
+            title: `Deep Research resumed from ${incomplete.id}`,
+            status: "running",
+            payload: { resumedFrom: incomplete.id, completedIterations: incomplete.completedIterations, totalIterations: incomplete.totalIterations },
+          });
+          return {
+            resumed: true,
+            researchSessionId: incomplete.id,
+            completedIterations: incomplete.completedIterations,
+            totalIterations: incomplete.totalIterations,
+            topic: incomplete.topic,
+          };
+        }
+      }
+      return runDeepResearch(input, context, {
         onEvent: async (event) => {
           if (event.type === "research:step") {
             context.repos.createTimeline({
@@ -234,7 +257,8 @@ ${context.memory.contextBlock("user")}`,
             });
           }
         },
-      }),
+      });
+    },
   });
 
   engine.register({
