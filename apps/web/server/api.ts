@@ -516,7 +516,54 @@ const server = createServer(async (req, res) => {
 	    if (url.pathname === "/api/config" && req.method === "GET") {
 	      return sendJson(res, publicAgentConfig());
 	    }
-	    if (url.pathname === "/api/util/rate-limits" && req.method === "GET") {
+	    if (url.pathname === "/api/integrations/test" && req.method === "POST") {
+      const body = await readBody(req);
+      const target = String(body.target ?? "").toLowerCase();
+      const keyMap: Record<string, string | undefined> = {
+        exa: env.exaApiKey,
+        tavily: env.tavilyApiKey,
+        jina: env.jinaApiKey,
+        fred: env.fredApiKey,
+        coingecko: env.coinMarketCapApiKey,
+        coinmarketcal: env.coinMarketCalApiKey,
+        openai: env.openaiApiKey,
+        aio: env.aioSandboxBaseUrl,
+      };
+      const key = keyMap[target];
+      if (!key) {
+        return sendJson(res, { ok: false, target, error: "No API key configured for this provider" }, 400);
+      }
+      // Lightweight probe: a GET to a known-safe URL per provider. Each
+      // returns 2xx on valid key (or 4xx for missing-param cases — we
+      // treat any reachable response as 'provider reachable').
+      const probes: Record<string, string> = {
+        exa: "https://api.exa.ai/health",
+        tavily: "https://api.tavily.com/health",
+        jina: "https://r.jina.ai/",
+        fred: `https://api.stlouisfed.org/fred/series?series_id=GDP&api_key=${key}&file_type=json`,
+        coingecko: "https://pro-api.coinmarketcap.com/v1/cryptocurrency/map",
+        coinmarketcal: "https://api.coinmarketcal.com/v1/events",
+        openai: env.openaiBaseUrl ?? "https://api.openai.com/v1",
+        aio: env.aioSandboxBaseUrl ?? "",
+      };
+      const url = probes[target];
+      if (!url) return sendJson(res, { ok: false, target, error: "No probe URL configured" }, 400);
+      try {
+        const start = Date.now();
+        const response = await fetch(url, { method: "GET", signal: AbortSignal.timeout(5000) });
+        const ms = Date.now() - start;
+        return sendJson(res, {
+          ok: response.ok,
+          target,
+          status: response.status,
+          latencyMs: ms,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return sendJson(res, { ok: false, target, error: message }, 502);
+      }
+    }
+    if (url.pathname === "/api/util/rate-limits" && req.method === "GET") {
       const sources = listRateLimitedSources();
       const buckets = Object.fromEntries(sources.map((s) => [s, getRateLimitStatus(s) ?? null]));
       return sendJson(res, { sources, buckets });
