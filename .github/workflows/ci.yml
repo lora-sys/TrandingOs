@@ -24,6 +24,8 @@ jobs:
         run: npm run test
       - name: Build
         run: npm run build
+      - name: Bundle size check
+        run: cd apps/web && node ../../scripts/check-bundle-size.mjs
       - name: Test coverage (apps/web)
         if: github.event_name == 'pull_request'
         run: cd apps/web && npx vitest run --coverage

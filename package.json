@@ -14,6 +14,7 @@
     "dev": "concurrently \"npm run server -w @trading-pi/web\" \"npm run dev -w @trading-pi/web\"",
     "dev:web": "npm run dev -w @trading-pi/web",
     "build": "npm run build --workspaces",
+    "check:size": "node scripts/check-bundle-size.mjs",
     "check": "tsc -b",
     "test": "vitest run",
     "test:core": "vitest run packages/core",
