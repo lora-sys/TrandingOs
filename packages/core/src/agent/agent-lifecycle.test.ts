@@ -78,6 +78,7 @@ function buildEnv(): TradingPiEnv {
     exchangeFallbacks: ["okx", "bybit"],
     tradingMode: "paper",
     thinkingLevel: "medium",
+    reasoning: false,
   };
 }
 
@@ -163,9 +164,9 @@ describe("TradingPiAgent subscribe lifecycle", () => {
           },
         });
         // Wrap splice to record removal order relative to the Agent index.
-        const spliceFn = original.splice.bind(original);
+        const spliceFn = (original.splice as unknown as (start: number, deleteCount?: number, ...rest: unknown[]) => unknown[]).bind(original);
         original.splice = ((start: number, deleteCount?: number, ...rest: unknown[]) => {
-          if (deleteCount && deleteCount > 0) removeOrder.push(i);
+          if (deleteCount !== undefined && deleteCount > 0) removeOrder.push(i);
           return spliceFn(start, deleteCount, ...rest);
         }) as typeof original.splice;
       }

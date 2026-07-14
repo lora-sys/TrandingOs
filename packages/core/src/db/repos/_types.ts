@@ -6,6 +6,38 @@ export type DecisionStatus = "pending" | "executed" | "settled_win" | "settled_l
 export type ResearchSessionStatus = "running" | "completed" | "failed" | "cancelled";
 export type PaperTradeStatus = "open" | "closed" | "cancelled";
 
+export interface MarketPriceRow {
+  id: string;
+  symbol: string;
+  exchange: string | null;
+  source: string;
+  price_usd: number | null;
+  change_24h: number | null;
+  volume_24h: number | null;
+  bid: number | null;
+  ask: number | null;
+  last: number | null;
+  high: number | null;
+  low: number | null;
+  volume: number | null;
+  extra_json: string | null;
+  fetched_at: string;
+}
+
+export interface OhlcvRow {
+  id: string;
+  symbol: string;
+  exchange: string | null;
+  timeframe: string;
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  fetched_at: string;
+}
+
 export interface DecisionRecord {
   id: string;
   workspaceId?: string;

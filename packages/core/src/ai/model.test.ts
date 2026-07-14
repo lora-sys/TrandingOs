@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadEnv } from "./env.js";
+import { loadEnv } from "../config/env.js";
 import { createTradingPiModel } from "./model.js";
 
 const baseEnv = {

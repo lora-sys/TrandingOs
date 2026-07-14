@@ -76,8 +76,8 @@ function sma(values: number[], period: number): Array<number | null> {
   return out;
 }
 
-function pct(value: number, fallback: number): number {
-  return Number.isFinite(value) ? value : fallback;
+function pct(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) ? (value as number) : fallback;
 }
 
 export async function runBacktest(

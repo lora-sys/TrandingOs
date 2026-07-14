@@ -1,6 +1,6 @@
 import type { TradingPiDatabase } from "../database.js";
 import { id, nowIso, parseJson, type ResearchSessionRow } from "./_helpers.js";
-import type { ResearchSessionStatus, ResearchSessionRecord } from "./_types.js";
+import type { MarketPriceRow, OhlcvRow, ResearchSessionStatus, ResearchSessionRecord } from "./_types.js";
 import type { TimelineRepo } from "./timeline-repo.js";
 
 export class AlphaRepo {
@@ -168,12 +168,12 @@ export class AlphaRepo {
     return priceId;
   }
 
-  async getLatestMarketPrice(symbol: string, source?: string): Promise<unknown | null> {
+  async getLatestMarketPrice(symbol: string, source?: string): Promise<MarketPriceRow | null> {
     const query = source
       ? "SELECT * FROM market_prices WHERE symbol = ? AND source = ? ORDER BY fetched_at DESC LIMIT 1"
       : "SELECT * FROM market_prices WHERE symbol = ? ORDER BY fetched_at DESC LIMIT 1";
     const params = source ? [symbol, source] : [symbol];
-    return this.db.prepare(query).get(...params) ?? null;
+    return (this.db.prepare(query).get(...params) as MarketPriceRow | undefined) ?? null;
   }
 
   async listMarketPrices(symbol: string): Promise<unknown[]> {
@@ -208,11 +208,11 @@ export class AlphaRepo {
     }
   }
 
-  async getOhlcvCandles(symbol: string, timeframe: string, limit?: number): Promise<unknown[]> {
+  async getOhlcvCandles(symbol: string, timeframe: string, limit?: number): Promise<OhlcvRow[]> {
     const rows = this.db.prepare(
       "SELECT * FROM market_ohlcv WHERE symbol = ? AND timeframe = ? ORDER BY timestamp DESC LIMIT ?"
     ).all(symbol, timeframe, limit ?? 100);
-    return rows;
+    return rows as unknown as OhlcvRow[];
   }
 
   async getCachedSearchResults(query: string, provider: string): Promise<unknown | null> {

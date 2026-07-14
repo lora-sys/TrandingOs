@@ -40,9 +40,9 @@ export class InfrastructureRepo {
     return this.database.db;
   }
 
-  list(table: ListTable) {
+  list(table: ListTable): any[] {
     const order = table === "skills" || table === "workflows" ? "id ASC" : table === "positions" ? "updated_at DESC" : "created_at DESC";
-    return this.db.prepare(`SELECT * FROM ${table} ORDER BY ${order} LIMIT 100`).all();
+    return this.db.prepare(`SELECT * FROM ${table} ORDER BY ${order} LIMIT 100`).all() as any[];
   }
 
   upsertSkill(skill: { id: string; name: string; description: string; riskLevel: string; permission: string }) {
