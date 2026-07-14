@@ -11,7 +11,7 @@ import {
   TerminalIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useResolvedTheme } from "@/lib/useResolvedTheme";
@@ -228,11 +228,14 @@ export function ChatWorkspace() {
     );
   }, [stream]);
 
+  const lastUserPromptRef = useRef<string>("");
   const submitMessage = useCallback(
     async ({ text, files }: { text: string; files?: unknown[] }) => {
       const trimmed = text.trim();
       const images = await processPromptFiles(files);
       if (!trimmed && images.length === 0) return;
+
+      if (trimmed) lastUserPromptRef.current = trimmed;
 
       const command = {
         id: stream.nextId("prompt"),
@@ -245,6 +248,16 @@ export function ChatWorkspace() {
     },
     [stream],
   );
+
+  const regenerateLast = useCallback(() => {
+    const last = lastUserPromptRef.current;
+    if (!last) return;
+    if (stream.status === "streaming" || stream.status === "submitted") return;
+    stream.send({
+      id: stream.nextId("prompt"),
+      message: last,
+    });
+  }, [stream]);
 
   const handleEditSubmit = useCallback(
     async (_entryId: string, newText: string) => {
