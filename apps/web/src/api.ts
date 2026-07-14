@@ -103,6 +103,13 @@ export const tradingPiApi = {
   health: () => rpc("/api/health"),
   status: () => rpc("/api/status"),
   aiPing: () => rpc("/api/ai/ping"),
+  /** Agent readiness — checks API key + provider config. Safe to poll. */
+  agentHealth: () => rpc("/api/agent/health") as Promise<{
+    ok: boolean;
+    ready: boolean;
+    checks: Record<string, unknown>;
+    message: string;
+  }>,
   /** Runtime config (thinking level, model, auto-compaction) */
   config: () => rpc("/api/config"),
   setConfig: (body: {

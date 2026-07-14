@@ -513,6 +513,27 @@ const server = createServer(async (req, res) => {
 	    if (url.pathname === "/api/config" && req.method === "GET") {
 	      return sendJson(res, publicAgentConfig());
 	    }
+	    if (url.pathname === "/api/agent/health" && req.method === "GET") {
+	      const aiConfigured = Boolean(env.openaiApiKey);
+	      const aiBase = env.openaiBaseUrl ?? "https://api.openai.com/v1";
+	      const aiModel = env.openaiModel;
+	      return sendJson(res, {
+	        ok: true,
+	        ready: aiConfigured,
+	        checks: {
+	          openaiKeyConfigured: aiConfigured,
+	          openaiBaseUrl: aiBase,
+	          openaiModel: aiModel,
+	          thinkingLevel: env.thinkingLevel,
+	          reasoning: env.reasoning,
+	          tradingMode: env.tradingMode,
+	          dataDir: env.dataDir,
+	        },
+	        message: aiConfigured
+	          ? "Agent ready."
+	          : "OPENAI_API_KEY not set. Set it in .env or via PUT /api/config before sending chat messages.",
+	      });
+	    }
 	    if (url.pathname === "/api/agent/system-prompt" && req.method === "GET") {
 		      return sendJson(res, {
 		        content: agent._systemPromptContent ?? "",
