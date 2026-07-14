@@ -61,6 +61,8 @@ export interface RepositoriesSurface {
   updateResearchSession: AlphaRepo["updateResearchSession"];
   listResearchSessions: AlphaRepo["listResearchSessions"];
   getResearchSession: AlphaRepo["getResearchSession"];
+  findIncompleteResearchSession: AlphaRepo["findIncompleteResearchSession"];
+  reapStaleRunningSessions: AlphaRepo["reapStaleRunningSessions"];
   upsertStrategy: AlphaRepo["upsertStrategy"];
   createBacktest: AlphaRepo["createBacktest"];
   portfolioSnapshot: AlphaRepo["portfolioSnapshot"];

@@ -77,6 +77,37 @@ export class AlphaRepo {
     return row ? this.mapResearchSession(row) : undefined;
   }
 
+  /** Find a research session that crashed mid-flight (status='running' and incomplete).
+   *  Useful for resuming after process restart. */
+  findIncompleteResearchSession(workspaceId?: string) {
+    const row = workspaceId
+      ? this.db.prepare(`
+          SELECT * FROM research_sessions
+          WHERE workspace_id = ?
+            AND status = 'running'
+            AND completed_iterations < total_iterations
+          ORDER BY started_at DESC LIMIT 1
+        `).get(workspaceId)
+      : this.db.prepare(`
+          SELECT * FROM research_sessions
+          WHERE status = 'running'
+            AND completed_iterations < total_iterations
+          ORDER BY started_at DESC LIMIT 1
+        `).get();
+    return row ? this.mapResearchSession(row as unknown as ResearchSessionRow) : undefined;
+  }
+
+  /** Mark any leftover 'running' research sessions as 'failed' on startup. */
+  reapStaleRunningSessions() {
+    const now = nowIso();
+    const result = this.db.prepare(`
+      UPDATE research_sessions
+      SET status = 'failed', error_message = 'process exited before completion', completed_at = ?
+      WHERE status = 'running'
+    `).run(now);
+    return result.changes;
+  }
+
   upsertStrategy(input: { id?: string; name: string; version?: string; status?: string; parameters?: unknown; score?: number }) {
     const timestamp = nowIso();
     const strategyId = input.id ?? id("str");

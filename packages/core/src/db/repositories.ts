@@ -128,6 +128,8 @@ export class Repositories implements RepositoriesSurface {
   declare readonly updateResearchSession: AlphaRepo["updateResearchSession"];
   declare readonly listResearchSessions: AlphaRepo["listResearchSessions"];
   declare readonly getResearchSession: AlphaRepo["getResearchSession"];
+  declare readonly findIncompleteResearchSession: AlphaRepo["findIncompleteResearchSession"];
+  declare readonly reapStaleRunningSessions: AlphaRepo["reapStaleRunningSessions"];
   declare readonly upsertStrategy: AlphaRepo["upsertStrategy"];
   declare readonly createBacktest: AlphaRepo["createBacktest"];
   declare readonly portfolioSnapshot: AlphaRepo["portfolioSnapshot"];
@@ -222,6 +224,8 @@ export class Repositories implements RepositoriesSurface {
       updateResearchSession: this.alpha.updateResearchSession.bind(this.alpha),
       listResearchSessions: this.alpha.listResearchSessions.bind(this.alpha),
       getResearchSession: this.alpha.getResearchSession.bind(this.alpha),
+      findIncompleteResearchSession: this.alpha.findIncompleteResearchSession.bind(this.alpha),
+      reapStaleRunningSessions: this.alpha.reapStaleRunningSessions.bind(this.alpha),
       upsertStrategy: this.alpha.upsertStrategy.bind(this.alpha),
       createBacktest: this.alpha.createBacktest.bind(this.alpha),
       portfolioSnapshot: this.alpha.portfolioSnapshot.bind(this.alpha),
