@@ -32,6 +32,14 @@ import { fetchCcxtOhlcv, fetchCcxtTicker } from "../market/ccxt.js";
 import { runBacktest, type BacktestInput, type BacktestResult, type BacktestCandle } from "../market/backtest.js";
 import { fetchCoinGeckoQuote } from "../market/coingecko.js";
 import { checkXueqiuHealth, getHotPosts, getHotStocks, getStockQuote, searchStock } from "../reach/xueqiu.js";
+import { registerRateLimit, withRateLimit } from "../util/rate-limiter.js";
+
+// Register per-source rate limits (rate/min, burst). Conservative defaults —
+// users can override via registerRateLimit() at runtime if they have API keys.
+registerRateLimit("academic.semanticscholar", { ratePerMinute: 30, burst: 3 });
+registerRateLimit("academic.crossref", { ratePerMinute: 30, burst: 5 });
+registerRateLimit("academic.openalex", { ratePerMinute: 30, burst: 5 });
+registerRateLimit("arxiv", { ratePerMinute: 20, burst: 2 });
 import { runDoctor } from "../reach/doctor.js";
 import {
   getPolymarketMarket,
@@ -732,12 +740,12 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, _context, signal) => {
       if (input.method === "search") {
         if (!input.query) throw new Error("academic.semanticscholar search requires query");
-        return { papers: await searchSemanticScholar(input.query, { limit: input.limit, year: input.year }, signal) };
+        return { papers: await withRateLimit("academic.semanticscholar", () => searchSemanticScholar(input.query, { limit: input.limit, year: input.year }, signal)) };
       }
       if (!input.paperId) throw new Error(`academic.semanticscholar ${input.method} requires paperId`);
-      if (input.method === "details") return { paper: await getSemanticScholarPaper(input.paperId, signal) };
-      if (input.method === "citations") return { papers: await getSemanticScholarCitations(input.paperId, input.limit ?? 10, signal) };
-      return { papers: await getSemanticScholarReferences(input.paperId, input.limit ?? 10, signal) };
+      if (input.method === "details") return { paper: await withRateLimit("academic.semanticscholar", () => getSemanticScholarPaper(input.paperId, signal)) };
+      if (input.method === "citations") return { papers: await withRateLimit("academic.semanticscholar", () => getSemanticScholarCitations(input.paperId, input.limit ?? 10, signal)) };
+      return { papers: await withRateLimit("academic.semanticscholar", () => getSemanticScholarReferences(input.paperId, input.limit ?? 10, signal)) };
     },
   });
 
@@ -757,10 +765,10 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, _context, signal) => {
       if (input.method === "search") {
         if (!input.query) throw new Error("academic.crossref search requires query");
-        return { works: await searchCrossref(input.query, { rows: input.rows, filter: input.filter }, signal) };
+        return { works: await withRateLimit("academic.crossref", () => searchCrossref(input.query, { rows: input.rows, filter: input.filter }, signal)) };
       }
       if (!input.doi) throw new Error("academic.crossref byDOI requires doi");
-      return { work: await getCrossrefByDoi(input.doi, signal) };
+      return { work: await withRateLimit("academic.crossref", () => getCrossrefByDoi(input.doi, signal)) };
     },
   });
 
@@ -780,10 +788,10 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, _context, signal) => {
       if (input.method === "search") {
         if (!input.query) throw new Error("academic.openalex search requires query");
-        return { works: await searchOpenAlex(input.query, { perPage: input.perPage, filter: input.filter }, signal) };
+        return { works: await withRateLimit("academic.openalex", () => searchOpenAlex(input.query, { perPage: input.perPage, filter: input.filter }, signal)) };
       }
       if (!input.workId) throw new Error("academic.openalex work requires workId");
-      return { work: await getOpenAlexWork(input.workId, signal) };
+      return { work: await withRateLimit("academic.openalex", () => getOpenAlexWork(input.workId, signal)) };
     },
   });
 
