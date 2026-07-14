@@ -8,7 +8,7 @@ export function createTradingPiModel(env: TradingPiEnv): Model<"openai-completio
     api: "openai-completions",
     provider: "trading-pi-openai-compatible",
     baseUrl: env.openaiBaseUrl ?? "https://api.openai.com/v1",
-    reasoning: false,
+    reasoning: env.reasoning,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128_000,

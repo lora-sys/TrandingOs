@@ -23,6 +23,7 @@ export interface TradingPiEnv {
   exchangeFallbacks: string[];
   tradingMode: "mock" | "paper" | "live_guarded";
   thinkingLevel: string;
+  reasoning: boolean;
 }
 
 function loadDotEnv(cwd = process.cwd()): Record<string, string> {
@@ -69,6 +70,7 @@ export function loadEnv(cwd = process.env.INIT_CWD ?? process.cwd()): TradingPiE
       .filter(Boolean),
     tradingMode: parseTradingMode(value("TRADING_PI_TRADING_MODE")),
     thinkingLevel: value("TRADING_PI_THINKING_LEVEL") ?? "medium",
+    reasoning: value("OPENAI_REASONING") === "true",
   };
 }
 
@@ -122,6 +124,7 @@ export function redactedEnv(env: TradingPiEnv) {
       exchangeFallbacks: env.exchangeFallbacks,
       tradingMode: env.tradingMode,
       thinkingLevel: env.thinkingLevel,
+      reasoning: env.reasoning,
     },
   };
 }
