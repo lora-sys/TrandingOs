@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { loadEnv, resolveLocalPaths, ensureLocalPaths, type TradingPiEnv, type LocalPaths } from "@trading-pi/core";
 import { TradingPiDatabase, Repositories } from "@trading-pi/core";
 import { SessionStore } from "@trading-pi/core";
@@ -517,6 +519,7 @@ const server = createServer(async (req, res) => {
 	      const aiConfigured = Boolean(env.openaiApiKey);
 	      const aiBase = env.openaiBaseUrl ?? "https://api.openai.com/v1";
 	      const aiModel = env.openaiModel;
+	      const apiVersion = readPackageVersion();
 	      const checks = {
 	        openaiKeyConfigured: aiConfigured,
 	        openaiBaseUrl: aiBase,
@@ -536,6 +539,7 @@ const server = createServer(async (req, res) => {
 	          return sendJson(res, {
 	            ok: true,
 	            ready: true,
+	            version: apiVersion,
 	            checks: { ...checks, pingMs: Date.now() - start, pingText: result.text?.slice(0, 80) },
 	            message: `Agent ready (ping ${Date.now() - start}ms).`,
 	          });
@@ -552,6 +556,7 @@ const server = createServer(async (req, res) => {
 	      return sendJson(res, {
 	        ok: true,
 	        ready: aiConfigured,
+	        version: apiVersion,
 	        checks,
 	        message: aiConfigured
 	          ? "Agent ready."
@@ -1284,3 +1289,15 @@ server.listen(port, () => console.log(`Trading Pi API listening on http://localh
 
 process.on("uncaughtException", (err) => console.error("Uncaught:", err));
 process.on("unhandledRejection", (err) => console.error("Unhandled:", err));
+
+let cachedVersion: string | undefined;
+function readPackageVersion(): string {
+  if (cachedVersion) return cachedVersion;
+  try {
+    const raw = readFileSync(resolve(process.cwd(), "package.json"), "utf8");
+    cachedVersion = (JSON.parse(raw) as { version?: string }).version ?? "unknown";
+  } catch {
+    cachedVersion = "unknown";
+  }
+  return cachedVersion;
+}
