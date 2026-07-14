@@ -54,6 +54,24 @@ Side panels:
   → ArtifactPreviewPanel: Preview artifacts (Tabs: Markdown/HTML/Data/Meta)
 ```
 
+## Environment
+
+Copy `.env.example` to `.env` and fill in:
+
+| Var | Default | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | — | LLM provider key (required for live chat) |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible endpoint |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model id passed to the provider |
+| `OPENAI_REASONING` | `false` | Enable reasoning for capable models (LongCat, o1, o3) |
+| `TRADING_PI_THINKING_LEVEL` | `medium` | `off` \| `minimal` \| `low` \| `medium` \| `high` \| `xhigh` |
+| `TRADING_PI_TRADING_MODE` | `paper` | `mock` \| `paper` \| `live_guarded` |
+| `TRADING_PI_DATA_DIR` | `.trading-pi` | Local SQLite + artifacts path |
+| `TRADING_PI_API_PORT` | `8787` | API server port |
+| `TRADING_PI_WEB_PORT` | `5173` | Vite dev server port |
+
+Optional integrations (leave blank to disable): `EXA_API_KEY`, `TAVILY_API_KEY`, `JINA_API_KEY`, `COINMARKETCAP_API_KEY`, `FRED_API_KEY`, `COINMARKETCAL_API_KEY`, `AIO_SANDBOX_BASE_URL`. Telemetry: `LANGFUSE_*`.
+
 ## Development
 
 ```bash
