@@ -52,8 +52,8 @@ export class MemoryStore {
     return records.map((record) => `- [${record.domain ?? "memory"}] ${record.key}: ${record.value}`).join("\n");
   }
 
-  contextBlock(scope = "user") {
-    const records = this.list(scope);
+  contextBlock(scope = "user", limit = 50) {
+    const records = this.list(scope).slice(0, limit);
     if (records.length === 0) return "No saved local memory yet.";
     return records.map((record) => `- ${record.key}: ${record.value}`).join("\n");
   }

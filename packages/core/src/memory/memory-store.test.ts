@@ -15,6 +15,7 @@ function buildEnv(): TradingPiEnv {
     exchangeFallbacks: ["okx", "bybit"],
     tradingMode: "paper",
     thinkingLevel: "medium",
+    reasoning: false,
   };
 }
 
@@ -80,6 +81,37 @@ describe("MemoryStore (PR-14)", () => {
       const after = memory.query({ domain: "user_rules", workspaceId: "wrk_1" }) as Array<{ key: string; value: string }>;
       expect(after.length).toBe(1);
       expect(after[0]?.value).toBe("$750");
+    } finally {
+      database.close();
+      rmSync(env.dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("contextBlock respects limit and does not blow context window", () => {
+    const { env, database, memory } = buildStore();
+    try {
+      for (let i = 0; i < 100; i += 1) {
+        memory.write({ domain: "user_rules", key: `rule-${i}`, value: `value-${i}`, importance: 100 - i });
+      }
+      const block = memory.contextBlock("user", 10);
+      const lines = block.split("\n").filter((l) => l.startsWith("- rule-"));
+      expect(lines.length).toBe(10);
+      expect(lines[0]).toContain("rule-0");
+    } finally {
+      database.close();
+      rmSync(env.dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("contextBlock defaults to limit 50", () => {
+    const { env, database, memory } = buildStore();
+    try {
+      for (let i = 0; i < 80; i += 1) {
+        memory.write({ domain: "user_rules", key: `k-${i}`, value: `v-${i}`, importance: 80 - i });
+      }
+      const block = memory.contextBlock("user");
+      const lines = block.split("\n").filter((l) => l.startsWith("- k-"));
+      expect(lines.length).toBe(50);
     } finally {
       database.close();
       rmSync(env.dataDir, { recursive: true, force: true });

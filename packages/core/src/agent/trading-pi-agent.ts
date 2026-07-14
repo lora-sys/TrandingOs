@@ -146,9 +146,10 @@ If a source failed or was blocked, surface that plainly.`;
             timestamp: Date.now(),
           });
         }
+        const memoryContext = this.deps.memory.contextBlock("user");
         contextMessages.push({
           role: "user",
-          content: `Local memory snapshot:\n${this.deps.memory.contextBlock("user")}`,
+          content: `Local memory snapshot:\n${memoryContext}`,
           timestamp: Date.now(),
         });
         return [...contextMessages, ...messages];
