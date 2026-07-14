@@ -4,6 +4,58 @@ All notable changes to Trading Pi are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [0.1.0] — 2026-07-15
+
+**First shippable release.** 88 PRs, 104 tests, 0 TS errors, 2.1 MB main bundle.
+
+### Agent runtime
+- Single TradingPiAgent (`@earendil-works/pi-agent-core`) with 70+ skills
+- 14 DAG workflows with slash command routing (`/research`, `/plan`, `/review-day`, `/backtest`, `/browser`, `/evolve`, `/bootstrap-os`)
+- Per-session scoped compaction (no instance-level state)
+- Try/finally listener cleanup (no SSE leaks)
+- LLM error classifier (network / auth / rate-limit / context-overflow / validation / internal)
+- `OPENAI_API_KEY` fail-fast with clear message
+- Slash command autocomplete menu in chat input
+- ↻ Regenerate button in input footer
+
+### Workflows
+- Real vectorized backtest (`strategy.backtest`) — Sharpe, max DD, win rate
+- `paper.trade.lifecycle` — `amend` / `cancel` / `partial_close` actions
+- `evolution.apply` — close the loop (suggestion → user approval → rule)
+- `deep.research` auto-resume on crash + reap stale sessions on startup
+
+### Skills
+- Token-bucket rate limiter (per source) wired to academic + arxiv
+- CoinGecko → CCXT fallback chain
+
+### Memory
+- 50-record cap + single-fetch per turn
+- Per-domain scoped storage with importance weighting
+
+### UI (10 Settings panels)
+- AI Model, Data Sources (Test buttons), AI Health (server/uptime), Rate Limits, Memory (search+filter), System Prompt viewer, Trading, User Rules, Deep Research, Skills (catalog)
+- Pending Approvals panel with inline Approve/Deny
+- Live metrics row on Dashboard
+
+### Backend endpoints (22+)
+- `GET /api/agent/{health,system-prompt,prompts,skills/catalog,metrics,version}`
+- `GET /api/util/rate-limits`
+- `POST /api/integrations/test`
+- `POST /api/agent/approvals/:id/respond`
+- `POST /api/evolution/suggestions/:id/{apply,reject}`
+- `GET /api/sessions/:id/export`
+
+### Infrastructure
+- 13 per-domain Repositories + facade
+- 9 standalone ADRs (MADR format)
+- 0 TypeScript errors (`npm run check`)
+- 104/104 tests pass (`npm run test`)
+- GitHub Actions CI on every push + PR
+- 9 issue templates + PR template + CODEOWNERS
+- `.nvmrc` + `.npmrc` + `.gitattributes` + `.devcontainer` + Dependabot
+- 9-page MVP SPA: Dashboard / Markets / Workspace / Journal / Timeline / Settings / Evolution (+ Memory)
+- Verified end-to-end with Playwright screenshots (`docs/evidence/e2e-2026-07-15/`)
+
 ## [Unreleased] — 2026-07-13
 
 ### Added (61 PRs since 2026-07-12 audit)
