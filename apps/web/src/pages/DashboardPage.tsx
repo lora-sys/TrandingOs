@@ -54,6 +54,11 @@ export function DashboardPage() {
   const { data: reviews } = useQuery({ queryKey: ["recent-reviews"], queryFn: () => tradingPiApi.reviews().catch(() => []) });
   const { data: status } = useQuery({ queryKey: ["status"], queryFn: () => tradingPiApi.status().catch(() => null), refetchInterval: 5000 });
   const { data: config } = useQuery({ queryKey: ["config"], queryFn: () => tradingPiApi.config().catch(() => null), refetchInterval: 10000 });
+  const { data: metrics } = useQuery({
+    queryKey: ["agent-metrics"],
+    queryFn: () => tradingPiApi.agentMetrics().catch(() => null),
+    refetchInterval: 30_000,
+  });
 
   const signals = Array.isArray(alpha?.signals) ? alpha.signals.slice(0, 5) : [];
   const macro = normalizeReminderItems(reminders?.macro);
@@ -144,6 +149,15 @@ export function DashboardPage() {
         <StatCard icon={DatabaseIcon} label="Skills" value={String(status?.skills ?? 0)} />
         <StatCard icon={GaugeIcon} label="Workflows" value={String(status?.workflows ?? 0)} />
       </section>
+
+      {metrics && (
+        <section className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard icon={ActivityIcon} label="Prompts today" value={String(metrics.prompts.today)} />
+          <StatCard icon={GaugeIcon} label="Active sub-agents" value={String(metrics.subAgents.active)} />
+          <StatCard icon={BellIcon} label="Pending approvals" value={String(metrics.approvals.pending)} />
+          <StatCard icon={BrainIcon} label="Sessions today" value={String(metrics.sessions.createdToday)} />
+        </section>
+      )}
     </main>
   );
 }
