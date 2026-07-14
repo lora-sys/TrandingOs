@@ -504,6 +504,8 @@ export function ChatWorkspace() {
                   status={stream.status}
                   agentReady={agentReady}
                   agentHealthMessage={agentHealth?.message}
+                  onRegenerate={regenerateLast}
+                  canRegenerate={Boolean(lastUserPromptRef.current)}
                 />
               </PromptInputProvider>
             </div>
@@ -573,6 +575,8 @@ function PromptInputWithSlashMenu({
   status,
   agentReady,
   agentHealthMessage,
+  onRegenerate,
+  canRegenerate,
 }: {
   className?: string;
   onSubmit: (message: { text: string; files: unknown[] }) => void | Promise<void>;
@@ -580,6 +584,8 @@ function PromptInputWithSlashMenu({
   status: ChatSubmitStatus;
   agentReady: boolean;
   agentHealthMessage?: string;
+  onRegenerate?: () => void;
+  canRegenerate?: boolean;
 }) {
   const controller = usePromptInputController();
   const inputValue = controller.textInput.value;
@@ -617,6 +623,15 @@ function PromptInputWithSlashMenu({
         <PromptInputFooter>
           <PromptInputTools>
             <PromptAttachmentButton />
+            <button
+              className="rounded-md border border-white/10 px-2 py-1 text-[10px] text-muted-foreground hover:bg-white/5 disabled:opacity-40"
+              disabled={!canRegenerate || status === "streaming" || status === "submitted"}
+              onClick={onRegenerate}
+              title={canRegenerate ? "Re-send the last prompt" : "Send a prompt first"}
+              type="button"
+            >
+              ↻ Regenerate
+            </button>
             <div className="hidden items-center gap-1 px-2 text-muted-foreground text-xs sm:flex">
               Enter sends, Shift+Enter inserts a newline
             </div>
