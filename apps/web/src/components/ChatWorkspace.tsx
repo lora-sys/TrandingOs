@@ -12,6 +12,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useResolvedTheme } from "@/lib/useResolvedTheme";
 import {
@@ -97,6 +98,15 @@ export function ChatWorkspace() {
 
   // ── Hook: SSE streaming lifecycle ──
   const stream = useSSEStream();
+
+  // ── Agent readiness probe — surfaces "AI not configured" before user types ──
+  const { data: agentHealth } = useQuery({
+    queryKey: ["agent-health"],
+    queryFn: () => tradingPiApi.agentHealth().catch(() => null),
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+  const agentReady = agentHealth?.ready !== false;
 
   // ── Hook: System message helper ──
   const addSystemMessage = useCallback(
@@ -464,6 +474,8 @@ export function ChatWorkspace() {
                   onStop={() => { stream.abort(); addSystemMessage("Aborted by user", "error"); }}
                   onSubmit={submitMessage}
                   status={stream.status}
+                  agentReady={agentReady}
+                  agentHealthMessage={agentHealth?.message}
                 />
               </PromptInputProvider>
             </div>
@@ -531,11 +543,15 @@ function PromptInputWithSlashMenu({
   onSubmit,
   onStop,
   status,
+  agentReady,
+  agentHealthMessage,
 }: {
   className?: string;
   onSubmit: (message: { text: string; files: unknown[] }) => void | Promise<void>;
   onStop: () => void;
   status: ChatSubmitStatus;
+  agentReady: boolean;
+  agentHealthMessage?: string;
 }) {
   const controller = usePromptInputController();
   const inputValue = controller.textInput.value;
@@ -557,6 +573,12 @@ function PromptInputWithSlashMenu({
         multiple
         onSubmit={({ text, files }) => onSubmit({ text, files })}
       >
+        {!agentReady && (
+          <div className="mx-3 mt-2 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+            <strong className="font-medium">AI not ready:</strong>{" "}
+            {agentHealthMessage ?? "OPENAI_API_KEY is not configured. Set it in .env, then restart the server."}
+          </div>
+        )}
         <PromptAttachmentPreview />
         <PromptInputBody>
           <PromptInputTextarea
