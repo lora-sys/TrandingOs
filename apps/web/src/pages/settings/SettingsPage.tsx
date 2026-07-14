@@ -89,6 +89,11 @@ export function SettingsPage() {
     queryFn: () => tradingPiApi.approvals().catch(() => []),
     refetchInterval: 5_000,
   });
+  const { data: recentPrompts } = useQuery({
+    queryKey: ["agent-prompts-recent"],
+    queryFn: () => tradingPiApi.agentPrompts(10).catch(() => null),
+    refetchInterval: 60_000,
+  });
   const respondApproval = useMutation({
     mutationFn: ({ id, approved }: { id: string; approved: boolean }) =>
       tradingPiApi.respondApproval(id, { approved }),
@@ -226,6 +231,22 @@ export function SettingsPage() {
                   >
                     Deny
                   </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {recentPrompts && recentPrompts.prompts.length > 0 && (
+        <Panel icon={FileTextIcon} title="Recent Prompts (last 10)">
+          <div className="space-y-2">
+            {recentPrompts.prompts.map((p) => (
+              <div className="rounded-md border bg-card/40 p-2 text-xs" key={p.id}>
+                <div className="line-clamp-2 text-foreground/90">{p.text || "(empty)"}</div>
+                <div className="mt-1 flex items-center justify-between text-muted-foreground">
+                  <span className="text-[10px]">{p.sessionId.slice(0, 12)}…</span>
+                  <span className="text-[10px]">{new Date(p.createdAt).toLocaleString()}</span>
                 </div>
               </div>
             ))}
