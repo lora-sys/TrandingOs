@@ -204,6 +204,11 @@ export function SettingsPage() {
     mutationFn: (id: string) => tradingPiApi.deleteMemory(id),
     onSuccess: () => refetchMemory(),
   });
+  const { data: skillCatalog } = useQuery({
+    queryKey: ["skill-catalog"],
+    queryFn: () => tradingPiApi.skillCatalog().catch(() => ({ count: 0, skills: [] })),
+    refetchInterval: 60_000,
+  });
 
   // Reasoning toggle — fetches current value, writes via PUT /api/config
   const { data: health } = useQuery({
@@ -582,6 +587,30 @@ export function SettingsPage() {
           </div>
           <SaveButton busy={saveDeepResearch.isPending} saved={saved === "deep-research"} onClick={() => saveDeepResearch.mutate()} />
         </Panel>
+
+        {skillCatalog && skillCatalog.skills.length > 0 && (
+          <Panel icon={FileTextIcon} title={`Skills (${skillCatalog.count} registered)`}>
+            <div className="max-h-96 space-y-1 overflow-y-auto">
+              {skillCatalog.skills.map((skill) => (
+                <div className="rounded-md border bg-card/40 p-2 text-xs" key={skill.id}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-medium">{skill.id}</span>
+                    <span className={`rounded px-1 text-[10px] ${
+                      skill.riskLevel === "high" || skill.riskLevel === "critical"
+                        ? "bg-rose-400/20 text-rose-200"
+                        : skill.riskLevel === "medium"
+                        ? "bg-amber-400/20 text-amber-200"
+                        : "bg-cyan-400/20 text-cyan-200"
+                    }`}>
+                      {skill.riskLevel}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-muted-foreground">{skill.description}</div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
 
         <Panel icon={SlidersHorizontalIcon} title="About">
           <div className="grid gap-2 text-sm sm:grid-cols-3">
