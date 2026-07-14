@@ -26,6 +26,19 @@ export class SkillRegistry {
     }));
   }
 
+  /** Full catalog including the TypeBox parameters schema so consumers
+   *  can build forms, docs, or auto-completion from the source of truth. */
+  catalog() {
+    return [...this.skills.values()].map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      riskLevel: skill.riskLevel,
+      permission: skill.permission,
+      parameters: skill.parameters,
+    }));
+  }
+
   syncToDb(context: SkillContext) {
     for (const skill of this.skills.values()) {
       context.repos.upsertSkill({

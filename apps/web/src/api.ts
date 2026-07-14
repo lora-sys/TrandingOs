@@ -282,6 +282,17 @@ export const tradingPiApi = {
       latencyMs?: number;
       error?: string;
     }>,
+  skillCatalog: () => rpc("/api/agent/skills/catalog") as Promise<{
+    count: number;
+    skills: Array<{
+      id: string;
+      name: string;
+      description: string;
+      riskLevel: "low" | "medium" | "high" | "critical";
+      permission: "read" | "write" | "dangerous";
+      parameters: unknown;
+    }>;
+  }>,
   artifacts: () => rpc("/api/artifacts"),
   artifact: (id: string) => rpc(`/api/artifacts/${id}`),
   artifactPreview: (id: string) => rpc(`/api/artifacts/${id}/preview`),

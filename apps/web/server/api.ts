@@ -672,6 +672,12 @@ const server = createServer(async (req, res) => {
 	      return sendJson(res, listAvailableModels());
 	    }
     if (url.pathname === "/api/skills" && req.method === "GET") return sendJson(res, skills.list());
+    if (url.pathname === "/api/agent/skills/catalog" && req.method === "GET") {
+      // Full catalog including TypeBox parameters schema. Larger payload
+      // than /api/skills; useful for building a skill browser or
+      // auto-generated forms.
+      return sendJson(res, { count: skills.list().length, skills: skills.catalog() });
+    }
     if (url.pathname === "/api/workflows" && req.method === "GET") return sendJson(res, workflows.list());
     if (url.pathname === "/api/sub-agents" && req.method === "GET") {
       return sendJson(res, { agents: subAgents.listActive(), definitions: subAgents.listDefinitions() });
