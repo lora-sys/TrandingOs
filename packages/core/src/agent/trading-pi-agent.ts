@@ -308,6 +308,9 @@ If a source failed or was blocked, surface that plainly.`;
   }
 
   private handleEvent(sessionId: string, event: AgentEvent) {
+    // Skip message_update: high-frequency streaming events don't need timeline persistence.
+    // The SSE stream already carries them; timeline would write 10+ rows/sec during streaming.
+    if (event.type === "message_update") return;
     this.deps.repos.createTimeline({
       sessionId,
       type: `pi.${event.type}`,
