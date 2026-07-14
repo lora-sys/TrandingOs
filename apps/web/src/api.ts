@@ -274,6 +274,14 @@ export const tradingPiApi = {
     lastPromptSec: number | null;
     nodeEnv: string;
   }>,
+  testIntegration: (target: string) =>
+    rpc("/api/integrations/test", { target }) as Promise<{
+      ok: boolean;
+      target: string;
+      status?: number;
+      latencyMs?: number;
+      error?: string;
+    }>,
   artifacts: () => rpc("/api/artifacts"),
   artifact: (id: string) => rpc(`/api/artifacts/${id}`),
   artifactPreview: (id: string) => rpc(`/api/artifacts/${id}/preview`),

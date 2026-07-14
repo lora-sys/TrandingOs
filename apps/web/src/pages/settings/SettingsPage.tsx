@@ -121,6 +121,12 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["config"] });
     },
   });
+  const testIntegration = useMutation({
+    mutationFn: (target: string) => tradingPiApi.testIntegration(target),
+  });
+  const integrationTest = (key: string) => {
+    testIntegration.mutate(key);
+  };
   const saveDataSources = useMutation({
     mutationFn: () => tradingPiApi.setConfig({ apiKeys }),
     onSuccess: () => {
@@ -327,18 +333,38 @@ export function SettingsPage() {
               ["reddit", "Reddit client-id"],
               ["polymarket", "Polymarket"],
               ["openrouter", "OpenRouter"],
-            ].map(([key, name]) => (
+            ].map(([key, name]) => {
+              const testResult = testIntegration.data?.target === key ? testIntegration.data : null;
+              return (
               <Field label={`${name}${(config as any)?.apiKeys?.[key]?.configured ? " configured" : ""}`} key={key}>
-                <input
-                  autoComplete="off"
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  onChange={(event) => updateApiKey(key, event.target.value)}
-                  placeholder={(config as any)?.apiKeys?.[key]?.configured ? "Saved for this session" : `${name} key`}
-                  type="password"
-                  value={apiKeys[key] ?? ""}
-                />
-              </Field>
-            ))}
+                <div className="flex gap-2">
+                  <input
+                    autoComplete="off"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    onChange={(event) => updateApiKey(key, event.target.value)}
+                    placeholder={(config as any)?.apiKeys?.[key]?.configured ? "Saved for this session" : `${name} key`}
+                    type="password"
+                    value={apiKeys[key] ?? ""}
+                  />
+                  <button
+                    className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-[10px] text-cyan-200 hover:bg-cyan-400/20 disabled:opacity-50"
+                    disabled={testIntegration.isPending || !(config as any)?.apiKeys?.[key]?.configured}
+                    onClick={() => integrationTest(key)}
+                    title="Send a lightweight probe to the provider to verify the key works"
+                    type="button"
+                  >
+                    {testIntegration.isPending && testIntegration.variables === key ? "..." : "Test"}
+                  </button>
+                </div>
+                {testResult && (
+                  <div className={`mt-1 text-[10px] ${testResult.ok ? "text-emerald-300" : "text-red-300"}`}>
+                    {testResult.ok
+                      ? `OK · ${testResult.status} · ${testResult.latencyMs}ms`
+                      : `Failed: ${testResult.error ?? testResult.status}`}
+                  </div>
+                )}
+              </Field>);
+            })}
           </div>
           <SaveButton busy={saveDataSources.isPending} saved={saved === "data-sources"} onClick={() => saveDataSources.mutate()} />
         </Panel>
