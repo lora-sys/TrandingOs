@@ -84,10 +84,15 @@ export function SettingsPage() {
     setApiKeys(nextKeys);
   }, []);
 
-  const { data: pendingApprovals } = useQuery({
+  const { data: pendingApprovals, refetch: refetchApprovals } = useQuery({
     queryKey: ["approvals-pending"],
     queryFn: () => tradingPiApi.approvals().catch(() => []),
     refetchInterval: 5_000,
+  });
+  const respondApproval = useMutation({
+    mutationFn: ({ id, approved }: { id: string; approved: boolean }) =>
+      tradingPiApi.respondApproval(id, { approved }),
+    onSuccess: () => refetchApprovals(),
   });
   const pendingApprovalList = Array.isArray(pendingApprovals)
     ? (pendingApprovals as Array<{ id?: string; toolName?: string; description?: string; riskLevel?: string; createdAt?: string; status?: string }>)
@@ -202,7 +207,25 @@ export function SettingsPage() {
                   <span className="text-xs text-muted-foreground">{approval.riskLevel ?? "?"}</span>
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  Awaiting your response. Open the chat to approve or deny.
+                  ID: <code className="text-[10px]">{approval.id}</code>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    className="rounded-md border border-cyan-400/40 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-200 hover:bg-cyan-400/20"
+                    disabled={!approval.id || respondApproval.isPending}
+                    onClick={() => approval.id && respondApproval.mutate({ id: approval.id, approved: true })}
+                    type="button"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="rounded-md border border-rose-400/40 bg-rose-400/10 px-3 py-1 text-xs text-rose-200 hover:bg-rose-400/20"
+                    disabled={!approval.id || respondApproval.isPending}
+                    onClick={() => approval.id && respondApproval.mutate({ id: approval.id, approved: false })}
+                    type="button"
+                  >
+                    Deny
+                  </button>
                 </div>
               </div>
             ))}

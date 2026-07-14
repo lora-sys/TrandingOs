@@ -245,6 +245,8 @@ export const tradingPiApi = {
   artifact: (id: string) => rpc(`/api/artifacts/${id}`),
   artifactPreview: (id: string) => rpc(`/api/artifacts/${id}/preview`),
   approvals: () => rpc("/api/approvals"),
+  respondApproval: (approvalId: string, body: { approved: boolean; reason?: string }) =>
+    rpc(`/api/agent/approvals/${encodeURIComponent(approvalId)}/respond`, body),
   marketplace: () => rpc("/api/marketplace"),
   seedMarketplace: (sessionId: string) => rpc("/api/marketplace/seed", { sessionId }),
   searchQuery: (input: any) => rpc("/api/search/query", input),
