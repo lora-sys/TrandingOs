@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --ignore-scripts --allow-remote=all
+      - name: Verify tests pass
+        run: npm run test
+      - name: Verify build
+        run: npm run build
+      - name: Extract changelog
+        id: changelog
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "## ${TAG}" > release-notes.md
+          # Pull section between [Unreleased] (exclusive) and next [version]
+          awk '/^## \[/{p=!p; if($0 ~ /Unreleased/) p=0; if(p) print; if($0 ~ /^## /) p=0}' CHANGELOG.md >> release-notes.md || true
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$(cat release-notes.md)" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: false
