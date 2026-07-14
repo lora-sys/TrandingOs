@@ -740,12 +740,14 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, _context, signal) => {
       if (input.method === "search") {
         if (!input.query) throw new Error("academic.semanticscholar search requires query");
-        return { papers: await withRateLimit("academic.semanticscholar", () => searchSemanticScholar(input.query, { limit: input.limit, year: input.year }, signal)) };
+        const { query, limit, year } = input;
+        return { papers: await withRateLimit("academic.semanticscholar", () => searchSemanticScholar(query, { limit, year }, signal)) };
       }
       if (!input.paperId) throw new Error(`academic.semanticscholar ${input.method} requires paperId`);
-      if (input.method === "details") return { paper: await withRateLimit("academic.semanticscholar", () => getSemanticScholarPaper(input.paperId, signal)) };
-      if (input.method === "citations") return { papers: await withRateLimit("academic.semanticscholar", () => getSemanticScholarCitations(input.paperId, input.limit ?? 10, signal)) };
-      return { papers: await withRateLimit("academic.semanticscholar", () => getSemanticScholarReferences(input.paperId, input.limit ?? 10, signal)) };
+      const { paperId } = input;
+      if (input.method === "details") return { paper: await withRateLimit("academic.semanticscholar", () => getSemanticScholarPaper(paperId, signal)) };
+      if (input.method === "citations") return { papers: await withRateLimit("academic.semanticscholar", () => getSemanticScholarCitations(paperId, input.limit ?? 10, signal)) };
+      return { papers: await withRateLimit("academic.semanticscholar", () => getSemanticScholarReferences(paperId, input.limit ?? 10, signal)) };
     },
   });
 
@@ -765,10 +767,12 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, _context, signal) => {
       if (input.method === "search") {
         if (!input.query) throw new Error("academic.crossref search requires query");
-        return { works: await withRateLimit("academic.crossref", () => searchCrossref(input.query, { rows: input.rows, filter: input.filter }, signal)) };
+        const { query, rows, filter } = input;
+        return { works: await withRateLimit("academic.crossref", () => searchCrossref(query, { rows, filter }, signal)) };
       }
       if (!input.doi) throw new Error("academic.crossref byDOI requires doi");
-      return { work: await withRateLimit("academic.crossref", () => getCrossrefByDoi(input.doi, signal)) };
+      const { doi } = input;
+      return { work: await withRateLimit("academic.crossref", () => getCrossrefByDoi(doi, signal)) };
     },
   });
 
@@ -788,10 +792,12 @@ export function registerDefaultSkills(registry: SkillRegistry) {
     execute: async (input, _context, signal) => {
       if (input.method === "search") {
         if (!input.query) throw new Error("academic.openalex search requires query");
-        return { works: await withRateLimit("academic.openalex", () => searchOpenAlex(input.query, { perPage: input.perPage, filter: input.filter }, signal)) };
+        const { query, perPage, filter } = input;
+        return { works: await withRateLimit("academic.openalex", () => searchOpenAlex(query, { perPage, filter }, signal)) };
       }
       if (!input.workId) throw new Error("academic.openalex work requires workId");
-      return { work: await withRateLimit("academic.openalex", () => getOpenAlexWork(input.workId, signal)) };
+      const { workId } = input;
+      return { work: await withRateLimit("academic.openalex", () => getOpenAlexWork(workId, signal)) };
     },
   });
 
@@ -1742,7 +1748,7 @@ ${normalized.notes}
             close: r.close,
             volume: r.volume,
           }))
-          .filter((c) => c.time >= startMs && c.time <= endMs);
+          .filter((c: { time: number; open: number; high: number; low: number; close: number; volume: number }) => c.time >= startMs && c.time <= endMs);
       };
 
       const backtestInput: BacktestInput = {
