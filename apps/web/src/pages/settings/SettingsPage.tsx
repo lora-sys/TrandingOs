@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ActivityIcon, DatabaseIcon, FileTextIcon, FlaskConicalIcon, PaletteIcon, PlusIcon, SettingsIcon, ShieldCheckIcon, SlidersHorizontalIcon, WalletCardsIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { tradingPiApi } from "@/api/client";
 import type { ThemeMode } from "@/core/types";
 import { useSettingsStore } from "@/lib/settingsStore";
@@ -182,6 +182,18 @@ export function SettingsPage() {
     queryFn: () => tradingPiApi.memory().catch(() => []),
     refetchInterval: 30_000,
   });
+  const [memoryQuery, setMemoryQuery] = useState("");
+  const filteredMemory = useMemo(() => {
+    if (!Array.isArray(memoryView)) return [];
+    if (!memoryQuery.trim()) return memoryView as Array<{ id?: string; domain?: string; key?: string; value?: string; importance?: number }>;
+    const q = memoryQuery.toLowerCase();
+    return (memoryView as Array<{ id?: string; domain?: string; key?: string; value?: string; importance?: number }>).filter(
+      (m) =>
+        (m.domain ?? "").toLowerCase().includes(q) ||
+        (m.key ?? "").toLowerCase().includes(q) ||
+        String(m.value ?? "").toLowerCase().includes(q),
+    );
+  }, [memoryView, memoryQuery]);
   const deleteMemory = useMutation({
     mutationFn: (id: string) => tradingPiApi.deleteMemory(id),
     onSuccess: () => refetchMemory(),
@@ -403,9 +415,26 @@ export function SettingsPage() {
         )}
 
         {Array.isArray(memoryView) && memoryView.length > 0 && (
-          <Panel icon={DatabaseIcon} title={`Memory (${memoryView.length} records)`}>
+          <Panel icon={DatabaseIcon} title={`Memory (${memoryView.length} records${memoryQuery ? `, ${filteredMemory.length} shown` : ""})`}>
+            <div className="mb-2 flex items-center gap-2">
+              <input
+                className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+                onChange={(event) => setMemoryQuery(event.target.value)}
+                placeholder="Filter by domain, key, or value…"
+                value={memoryQuery}
+              />
+              {memoryQuery && (
+                <button
+                  className="rounded-md border border-white/10 px-2 py-1 text-[10px]"
+                  onClick={() => setMemoryQuery("")}
+                  type="button"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             <div className="space-y-1">
-              {memoryView.slice(0, 12).map((m: any, i: number) => (
+              {filteredMemory.slice(0, 12).map((m: any, i: number) => (
                 <div className="flex items-start gap-2 rounded-md border bg-card/40 p-2 text-xs" key={m.id ?? i}>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
@@ -429,9 +458,12 @@ export function SettingsPage() {
                   )}
                 </div>
               ))}
+              {filteredMemory.length === 0 && memoryQuery && (
+                <p className="text-xs text-muted-foreground">No records match "{memoryQuery}".</p>
+              )}
             </div>
-            {memoryView.length > 12 && (
-              <p className="mt-2 text-[10px] text-muted-foreground">Showing 12 of {memoryView.length}.</p>
+            {filteredMemory.length > 12 && (
+              <p className="mt-2 text-[10px] text-muted-foreground">Showing 12 of {filteredMemory.length}.</p>
             )}
           </Panel>
         )}
