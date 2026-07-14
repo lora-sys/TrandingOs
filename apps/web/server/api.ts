@@ -14,6 +14,7 @@ import { LangfuseTelemetry } from "@trading-pi/core";
 import { runDeepResearch } from "@trading-pi/core";
 import { getDefaultSubAgentManager } from "@trading-pi/core";
 import { aiPing } from "@trading-pi/core";
+import { listRateLimitedSources, getRateLimitStatus } from "@trading-pi/core";
 import { classifyError, sendErrorEvent, type AgentErrorCategory } from "./error-classify.js";
 import type { SubAgentEvent } from "@trading-pi/core";
 
@@ -515,7 +516,12 @@ const server = createServer(async (req, res) => {
 	    if (url.pathname === "/api/config" && req.method === "GET") {
 	      return sendJson(res, publicAgentConfig());
 	    }
-	    if (url.pathname === "/api/agent/health" && req.method === "GET") {
+	    if (url.pathname === "/api/util/rate-limits" && req.method === "GET") {
+      const sources = listRateLimitedSources();
+      const buckets = Object.fromEntries(sources.map((s) => [s, getRateLimitStatus(s) ?? null]));
+      return sendJson(res, { sources, buckets });
+    }
+    if (url.pathname === "/api/agent/health" && req.method === "GET") {
 	      const aiConfigured = Boolean(env.openaiApiKey);
 	      const aiBase = env.openaiBaseUrl ?? "https://api.openai.com/v1";
 	      const aiModel = env.openaiModel;

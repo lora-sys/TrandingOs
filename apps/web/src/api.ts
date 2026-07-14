@@ -261,6 +261,10 @@ export const tradingPiApi = {
     count: number;
     limit: number;
   }>,
+  rateLimits: () => rpc("/api/util/rate-limits") as Promise<{
+    sources: string[];
+    buckets: Record<string, { tokens: number; capacity: number; ratePerMinute: number } | null>;
+  }>,
   artifacts: () => rpc("/api/artifacts"),
   artifact: (id: string) => rpc(`/api/artifacts/${id}`),
   artifactPreview: (id: string) => rpc(`/api/artifacts/${id}/preview`),
