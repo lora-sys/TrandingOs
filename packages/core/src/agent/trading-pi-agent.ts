@@ -112,6 +112,11 @@ If a source failed or was blocked, surface that plainly.`;
     if (routed) {
       return routed;
     }
+    if (!this.deps.env.openaiApiKey) {
+      throw new Error(
+        "OPENAI_API_KEY is not configured. Set it in .env or via PUT /api/config before sending chat messages.",
+      );
+    }
     const agentSystemPrompt = this._systemPromptContent;
     const agentTools = this.deps.skills.toPiTools(baseContext);
     // Resolve model: runtime override > env default
