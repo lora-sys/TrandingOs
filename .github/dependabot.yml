@@ -1,0 +1,37 @@
+# Dependabot
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    groups:
+      production:
+        dependency-type: "production"
+      development:
+        dependency-type: "development"
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "deps"
+    # Skip major version bumps for these — they often require coordinated
+    # updates (vite, vitest, pi-agent-core) so we keep them on manual
+    # review cadence.
+    ignore:
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@earendil-works/*"
+        update-types: ["version-update:semver-major"]
+    # Don't auto-update xlsx — it ships from a non-registry tarball
+    # (cdn.sheetjs.com) which breaks npm install.
+    exclude-paths: []
+    allow:
+      - dependency-type: "direct"
