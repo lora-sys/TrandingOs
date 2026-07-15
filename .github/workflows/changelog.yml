@@ -1,0 +1,50 @@
+name: Changelog Required
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect source changes
+        id: detect
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          # Files that count as "user-visible change"
+          PATTERN='^(apps|packages|scripts|\.github/workflows)/'
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" | grep -E "$PATTERN" | head -100)
+          DOCS_CHANGED=$(echo "$CHANGED" | grep -E "^CHANGELOG\.md$" || true)
+          SKIP_LABEL="no-changelog"
+          HAS_SKIP="false"
+          if echo "${{ github.event.pull_request.labels.*.name }}" | grep -q "$SKIP_LABEL"; then
+            HAS_SKIP="true"
+          fi
+          if [ -n "$CHANGED" ] && [ -z "$DOCS_CHANGED" ] && [ "$HAS_SKIP" = "false" ]; then
+            echo "needs_changelog=true" >> $GITHUB_OUTPUT
+            echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGED" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "needs_changelog=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Fail when CHANGELOG.md missing
+        if: steps.detect.outputs.needs_changelog == 'true'
+        run: |
+          echo "::error title=CHANGELOG.md required::This PR modifies user-facing files but did not update CHANGELOG.md. Please add an entry under the [Unreleased] section, or apply the 'no-changelog' label if the change is internal-only."
+          echo "Files changed:"
+          echo "${{ steps.detect.outputs.changed_files }}"
+          exit 1
+      - name: Pass when CHANGELOG.md updated
+        if: steps.detect.outputs.needs_changelog == 'false'
+        run: echo "CHANGELOG check passed."
