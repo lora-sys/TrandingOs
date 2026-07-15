@@ -1,0 +1,31 @@
+# Auto-label PRs by changed paths
+# Docs: https://github.com/actions/labeler
+
+docs:
+  - docs/**
+
+core:
+  - packages/core/**
+
+web:
+  - apps/web/**
+
+ci:
+  - .github/**
+
+build:
+  - package.json
+  - package-lock.json
+  - pnpm-lock.yaml
+
+tests:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+
+docs-evidence:
+  - docs/evidence/**
+
+chore:
+  - ".github/dependabot.yml"
+  - "CHANGELOG.md"
