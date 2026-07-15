@@ -1,0 +1,38 @@
+name: Stale Issue Labeler
+
+on:
+  schedule:
+    - cron: "0 4 * * *"  # Daily 04:00 UTC
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply 'stale' label after 60 days of inactivity
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+            const items = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, state: "open", per_page: 100 }
+            );
+            let count = 0;
+            for (const item of items) {
+              if (item.pull_request) continue;
+              const updated = new Date(item.updated_at);
+              if (updated > cutoff) continue;
+              if (item.labels?.some((l) => l.name === "stale")) continue;
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: item.number, labels: ["stale"],
+              });
+              count += 1;
+            }
+            core.setOutput("labeled", count);
+            core.info(`Labeled ${count} issue(s) as stale`);
