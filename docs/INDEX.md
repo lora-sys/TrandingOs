@@ -24,6 +24,12 @@
 - [local-first-architecture.md](local-first-architecture.md) — SQLite + files rationale
 - [pi-reuse.md](pi-reuse.md) — `@earendil-works/pi-agent-core` integration
 
+## Evidence
+
+- [evidence/audit-2026-07-12/](evidence/audit-2026-07-12/) — 130-issue audit + 18-PR roadmap
+- [evidence/mvp-decision-workspace/](evidence/mvp-decision-workspace/) — MVP spec + compliance matrix
+- [evidence/e2e-2026-07-15/](evidence/e2e-2026-07-15/) — 10 Playwright screenshots (all 7 pages + chat)
+
 ## Packages
 
 - [packages/core.md](packages/core.md) — `packages/core` (agent, skills, workflows, repos)
