@@ -1,0 +1,32 @@
+name: Security Audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays 06:00 UTC
+  workflow_dispatch:        # manual trigger
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --ignore-scripts --allow-remote=all
+      - name: Run npm audit (production only)
+        run: npm audit --omit=dev --audit-level=moderate
+        continue-on-error: true
+      - name: Run npm audit (full)
+        run: npm audit --audit-level=low
+        continue-on-error: true
+      - name: Summarize audit results
+        if: always()
+        run: |
+          if [ -f "npm-audit.json" ]; then
+            echo "### Audit summary" >> $GITHUB_STEP_SUMMARY
+            cat npm-audit.json | head -100 >> $GITHUB_STEP_SUMMARY
+          fi
