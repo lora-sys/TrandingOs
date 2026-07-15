@@ -17,16 +17,24 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm ci --legacy-peer-deps --ignore-scripts --allow-remote=all
-      - name: Run npm audit (production only)
-        run: npm audit --omit=dev --audit-level=moderate
-        continue-on-error: true
-      - name: Run npm audit (full)
-        run: npm audit --audit-level=low
-        continue-on-error: true
+      - name: Run npm audit (production only) — save JSON
+        run: npm audit --omit=dev --audit-level=moderate --json > npm-audit-prod.json 2>/dev/null || true
+      - name: Run npm audit (full tree) — save JSON
+        run: npm audit --audit-level=low --json > npm-audit-full.json 2>/dev/null || true
+      - name: Upload audit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-${{ github.run_id }}
+          path: npm-audit-*.json
+          retention-days: 30
       - name: Summarize audit results
         if: always()
         run: |
-          if [ -f "npm-audit.json" ]; then
-            echo "### Audit summary" >> $GITHUB_STEP_SUMMARY
-            cat npm-audit.json | head -100 >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "### Audit summary" >> $GITHUB_STEP_SUMMARY
+          for f in npm-audit-*.json; do
+            if [ -s "$f" ]; then
+              vuln_count=$(node -e "const d=JSON.parse(require('fs').readFileSync('$f','utf8'));const m=d.metadata?.vulnerabilities||{};console.log('total:',Object.values(m).reduce((a,b)=>a+b,0)||0);" 2>/dev/null || echo "unknown")
+              echo "**$f**: $vuln_count vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
