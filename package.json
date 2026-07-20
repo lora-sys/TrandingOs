@@ -43,14 +43,14 @@
     "react-dom": "19.2.7"
   },
   "dependencies": {
-    "@tanstack/react-start": "^1.168.25",
+    "@tanstack/react-start": "^1.168.32",
     "clsx": "^2.1.1",
     "lightweight-charts": "^5.2.0",
-    "recharts": "^3.8.1",
+    "recharts": "^3.9.2",
     "socks-proxy-agent": "^10.1.0",
     "tailwind-merge": "^3.6.0",
     "tailwind-variants": "^3.2.2",
     "vinxi": "^0.5.11",
-    "ws": "^8.21.0"
+    "ws": "^8.21.1"
   }
 }
